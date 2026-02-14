@@ -1,85 +1,70 @@
-Personas
+ the project will benefit from high-concurrency performance and efficient memory management, which is critical for real-time telemetry.
 
-The Superfan (Alex): Wants every stat and schedule across multiple sports.
+---
 
-The Gearhead (Leo): Obsessed with the technical and engineering side.
+### **Personas**
 
-The Bettor (Sam): Needs real-time, low-latency data for predictions.
+* **The Superfan (Alex):** Wants every stat and schedule across multiple sports.
+* **The Gearhead (Leo):** Obsessed with the technical and engineering side.
+* **The Bettor (Sam):** Needs real-time, low-latency data for predictions.
+* **The Admin (Sarah):** Manages content and ensures data accuracy.
+* **The Developer (Ben):** Maintains the high-performance Go backend.
 
-The Admin (Sarah): Manages content and ensures data accuracy.
+---
 
-The Developer (Ben): Maintains the high-performance Go backend.
+### **The User Stories (30)**
 
-The User Stories (30)
-Epic 1: The Unified Dashboard & Discovery
+#### **Epic 1: The Unified Dashboard & Discovery**
 
-As a Superfan, I want a unified dashboard so that I can see live results for F1 and MotoGP on the same screen.
+1. **As a Superfan,** I want a unified dashboard so that I can see live results for F1 and MotoGP on the same screen.
+2. **As a user,** I want to filter the race calendar by discipline (e.g., Jet Racing only) so I don't see irrelevant events.
+3. **As a fan,** I want to "Follow" specific riders/drivers to receive personalized news alerts.
+4. **As a user,** I want a "Global Search" to find specific tracks, riders, or engine specs across all sports.
+5. **As a mobile user,** I want a simplified "Live View" so I can track race positions while away from my TV.
+6. **As a fan,** I want a "Timezone Toggle" so that all race start times are automatically converted to my local time.
 
-As a user, I want to filter the race calendar by discipline (e.g., Jet Racing only) so I don't see irrelevant events.
+#### **Epic 2: Live Telemetry & Real-time Data**
 
-As a fan, I want to "Follow" specific riders/drivers to receive personalized news alerts.
+7. **As a Data Nerd,** I want to see live telemetry (speed, gear, throttle) for F1 cars so I can analyze driving styles.
+8. **As a Bettor,** I want sub-second latency on race updates so I have the most accurate data for live predictions.
+9. **As a Gearhead,** I want to see tire degradation stats during a MotoGP race to understand pit strategies.
+10. **As a user,** I want to see a live "Gap to Leader" visualization that updates every second.
+11. **As a Jet Racing fan,** I want to track the altitude and G-force of pilots during live air races.
+12. **As a technical user,** I want to view historical telemetry logs to compare a rider’s performance across different years.
 
-As a user, I want a "Global Search" to find specific tracks, riders, or engine specs across all sports.
+#### **Epic 3: Engineering & Tech Corner**
 
-As a mobile user, I want a simplified "Live View" so I can track race positions while away from my TV.
+13. **As a Gearhead,** I want a "Bike/Car Comparison" tool to see technical specs side-by-side.
+14. **As a student,** I want to read "Technical Explainers" on aero-winglets or hybrid engines to learn the science behind the speed.
+15. **As a user,** I want to see 3D models of engines with annotated parts for different racing classes.
+16. **As a fan,** I want to see "Track Profiles" that highlight technical challenges like elevation changes and braking zones.
 
-As a fan, I want a "Timezone Toggle" so that all race start times are automatically converted to my local time.
+#### **Epic 4: Community & Gamification**
 
-Epic 2: Live Telemetry & Real-time Data
+17. **As a fan,** I want to join "Paddock Chat" rooms for specific races to discuss the action with others.
+18. **As a user,** I want to participate in "Podium Predictions" to earn badges and climb a global leaderboard.
+19. **As a fan,** I want to share specific data visualizations (like a lap-time graph) directly to social media.
+20. **As a user,** I want to vote on "Driver of the Day" during the final laps of a race.
 
-As a Data Nerd, I want to see live telemetry (speed, gear, throttle) for F1 cars so I can analyze driving styles.
+#### **Epic 5: Backend & Performance (Golang Specific)**
 
-As a Bettor, I want sub-second latency on race updates so I have the most accurate data for live predictions.
+21. **As a Developer,** I want to use **Goroutines** to ingest data from 10+ different racing APIs simultaneously without blocking the main thread.
+22. **As a Developer,** I want to implement a **WebSocket server in Go** to push real-time telemetry to thousands of users at once.
+23. **As a Developer,** I want to build a **high-speed caching layer** (using Redis) to serve frequently accessed standings in under 10ms.
+24. **As a Developer,** I want to implement **gRPC for internal microservices** to ensure fast communication between the news and telemetry modules.
+25. **As a Developer,** I want to write **unit tests in Go** for the data-parsing logic to ensure race results are never corrupted during ingestion.
+26. **As a Developer,** I want to use **Go's `context` package** to handle API timeouts gracefully during peak race traffic.
 
-As a Gearhead, I want to see tire degradation stats during a MotoGP race to understand pit strategies.
+#### **Epic 6: Administration & Security**
 
-As a user, I want to see a live "Gap to Leader" visualization that updates every second.
+27. **As an Admin,** I want a CMS dashboard to quickly update race results if an official penalty changes the standings.
+28. **As an Admin,** I want to moderate community forums to remove toxic content or spoilers.
+29. **As a user,** I want to log in using OAuth (Google/Discord) so I don't have to create another password.
+30. **As a security officer,** I want all API endpoints rate-limited to prevent scraping bots from slowing down the site during a race.
 
-As a Jet Racing fan, I want to track the altitude and G-force of pilots during live air races.
+---
 
-As a technical user, I want to view historical telemetry logs to compare a rider’s performance across different years.
+### **Nitrous Backend Architecture**
 
-Epic 3: Engineering & Tech Corner
-
-As a Gearhead, I want a "Bike/Car Comparison" tool to see technical specs side-by-side.
-
-As a student, I want to read "Technical Explainers" on aero-winglets or hybrid engines to learn the science behind the speed.
-
-As a user, I want to see 3D models of engines with annotated parts for different racing classes.
-
-As a fan, I want to see "Track Profiles" that highlight technical challenges like elevation changes and braking zones.
-
-Epic 4: Community & Gamification
-
-As a fan, I want to join "Paddock Chat" rooms for specific races to discuss the action with others.
-
-As a user, I want to participate in "Podium Predictions" to earn badges and climb a global leaderboard.
-
-As a fan, I want to share specific data visualizations (like a lap-time graph) directly to social media.
-
-As a user, I want to vote on "Driver of the Day" during the final laps of a race.
-
-Epic 5: Backend & Performance (Golang Specific)
-
-As a Developer, I want to use Goroutines to ingest data from 10+ different racing APIs simultaneously without blocking the main thread.
-
-As a Developer, I want to implement a WebSocket server in Go to push real-time telemetry to thousands of users at once.
-
-As a Developer, I want to build a high-speed caching layer (using Redis) to serve frequently accessed standings in under 10ms.
-
-As a Developer, I want to implement gRPC for internal microservices to ensure fast communication between the news and telemetry modules.
-
-As a Developer, I want to write unit tests in Go for the data-parsing logic to ensure race results are never corrupted during ingestion.
-
-As a Developer, I want to use Go's context package to handle API timeouts gracefully during peak race traffic.
-
-Epic 6: Administration & Security
-
-As an Admin, I want a CMS dashboard to quickly update race results if an official penalty changes the standings.
-
-As an Admin, I want to moderate community forums to remove toxic content or spoilers.
-
-As a user, I want to log in using OAuth (Google/Discord) so I don't have to create another password.
-
-As a security officer, I want all API endpoints rate-limited to prevent scraping bots from slowing down the site during a race.
+In this architecture, Go's **Concurrency Model** acts like the fuel injectors in a high-performance engine—precisely managing multiple data flows (F1, MotoGP, Jet Racing) to ensure the frontend never "stalls" during high-traffic race weekends.
 
