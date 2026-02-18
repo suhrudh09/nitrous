@@ -48,6 +48,39 @@ type MerchItem struct {
 	Category string  `json:"category"`
 }
 
+// Team represents a racing team or organization
+type Team struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Country        string    `json:"country,omitempty"`
+	Drivers        []string  `json:"drivers,omitempty"`
+	Followers      []string  `json:"followers,omitempty"`
+	FollowersCount int       `json:"followersCount"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+// Reminder represents a user's reminder for an event.
+type Reminder struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	EventID   string    `json:"eventId"`
+	Message   string    `json:"message,omitempty"`
+	RemindAt  time.Time `json:"remindAt"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// Order represents a merch order placed by a user.
+type Order struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"userId"`
+	MerchItemID string    `json:"merchItemId"`
+	Quantity    int       `json:"quantity"`
+	UnitPrice   float64   `json:"unitPrice"`
+	TotalPrice  float64   `json:"totalPrice"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
 // User represents a platform user
 type User struct {
 	ID           string    `json:"id"`
@@ -74,4 +107,17 @@ type RegisterRequest struct {
 type BookingRequest struct {
 	JourneyID string `json:"journeyId" binding:"required"`
 	UserID    string `json:"userId" binding:"required"`
+}
+
+// SetReminderRequest for creating a reminder.
+type SetReminderRequest struct {
+	EventID  string    `json:"eventId" binding:"required"`
+	Message  string    `json:"message"`
+	RemindAt time.Time `json:"remindAt" binding:"required"`
+}
+
+// CreateOrderRequest for creating merch orders.
+type CreateOrderRequest struct {
+	MerchItemID string `json:"merchItemId" binding:"required"`
+	Quantity    int    `json:"quantity" binding:"required,min=1"`
 }
