@@ -85,12 +85,15 @@
 - [ ] Modal interactions
 
 #### Backend (Go)
-- [ ] REST API server (Gin framework)
+- [x] REST API server (Gin framework)
 - [ ] Database schema (PostgreSQL)
-- [ ] CRUD endpoints for events
-- [ ] Authentication (JWT)
-- [ ] CORS setup (allow Next.js origin)
-- [ ] WebSocket for live data
+- [x] CRUD endpoints for events
+- [x] Authentication (JWT)
+- [x] CORS setup (allow Next.js origin)
+- [x] WebSocket for live data (streams telemetry hub)
+- [x] Teams endpoints (list, detail, follow/unfollow)
+- [x] Orders endpoints (create, list mine, detail mine)
+- [x] Reminders endpoints (create, delete, list mine)
 
 #### Database Schema
 ```sql
@@ -184,6 +187,28 @@ POST   /api/auth/logout         - Logout
 GET    /api/auth/me             - Get current user
 ```
 
+### Teams
+```
+GET    /api/teams               - List teams
+GET    /api/teams/:id           - Get team by ID
+POST   /api/teams/:id/follow    - Follow a team (auth required)
+POST   /api/teams/:id/unfollow  - Unfollow a team (auth required)
+```
+
+### Streams
+```
+GET    /api/streams             - List streams
+GET    /api/streams/:id         - Get stream by ID
+GET    /api/streams/ws          - WebSocket telemetry stream
+```
+
+### Reminders
+```
+GET    /api/reminders           - List current user's reminders
+POST   /api/reminders           - Create reminder
+DELETE /api/reminders/:id       - Delete reminder
+```
+
 ### Journeys
 ```
 GET    /api/journeys            - List journeys
@@ -194,6 +219,8 @@ POST   /api/journeys/:id/book   - Book a journey
 ```
 GET    /api/merch               - List merch items
 POST   /api/orders              - Create order
+GET    /api/orders              - List current user's orders
+GET    /api/orders/:id          - Get current user's order by ID
 ```
 
 ---
@@ -214,7 +241,11 @@ nitrous-backend/
 ├── handlers/
 │   ├── events.go          ← Event endpoints
 │   ├── categories.go      ← Category endpoints
-│   └── auth.go            ← Auth endpoints
+│   ├── auth.go            ← Auth endpoints
+│   ├── teams.go           ← Team endpoints
+│   ├── streams.go         ← Stream + websocket endpoints
+│   ├── orders.go          ← Order endpoints
+│   └── reminders.go       ← Reminder endpoints
 ├── middleware/
 │   ├── auth.go            ← JWT validation
 │   └── cors.go            ← CORS config

@@ -97,6 +97,19 @@ GET    /api/merch               List all merch items
 GET    /api/merch/:id           Get merch item by ID
 ```
 
+#### Teams
+```
+GET    /api/teams               List all teams
+GET    /api/teams/:id           Get team by ID
+```
+
+#### Streams
+```
+GET    /api/streams             List all streams
+GET    /api/streams/:id         Get stream by ID
+GET    /api/streams/ws          WebSocket endpoint for telemetry stream
+```
+
 #### Auth
 ```
 POST   /api/auth/register       Create account
@@ -111,6 +124,14 @@ POST   /api/events              Create event
 PUT    /api/events/:id          Update event
 DELETE /api/events/:id          Delete event
 POST   /api/journeys/:id/book   Book a journey
+POST   /api/teams/:id/follow    Follow a team
+POST   /api/teams/:id/unfollow  Unfollow a team
+GET    /api/reminders           List my reminders
+POST   /api/reminders           Create reminder
+DELETE /api/reminders/:id       Delete reminder
+POST   /api/orders              Create order
+GET    /api/orders              List my orders
+GET    /api/orders/:id          Get my order by ID
 ```
 
 ## Authentication
@@ -152,6 +173,76 @@ curl -X POST http://localhost:8080/api/auth/login \
 ### Use Token
 ```bash
 curl http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Teams (Public + Protected)
+```bash
+# List teams
+curl http://localhost:8080/api/teams
+
+# Get a team by ID
+curl http://localhost:8080/api/teams/TEAM_ID
+
+# Follow team (auth required)
+curl -X POST http://localhost:8080/api/teams/TEAM_ID/follow \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Unfollow team (auth required)
+curl -X POST http://localhost:8080/api/teams/TEAM_ID/unfollow \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Streams (REST + WebSocket)
+```bash
+# List streams
+curl http://localhost:8080/api/streams
+
+# Get stream by ID
+curl http://localhost:8080/api/streams/stream-1
+
+# WebSocket endpoint (use a WS client like wscat)
+wscat -c ws://localhost:8080/api/streams/ws
+```
+
+### Orders (Protected)
+```bash
+# Create order
+curl -X POST http://localhost:8080/api/orders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "merchItemId": "MERCH_ITEM_ID",
+    "quantity": 2
+  }'
+
+# List my orders
+curl http://localhost:8080/api/orders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Get my order by ID
+curl http://localhost:8080/api/orders/ORDER_ID \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Reminders (Protected)
+```bash
+# Create reminder
+curl -X POST http://localhost:8080/api/reminders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "eventId": "EVENT_ID",
+    "message": "Notify me 1 hour before",
+    "remindAt": "2026-03-15T14:00:00Z"
+  }'
+
+# List my reminders
+curl http://localhost:8080/api/reminders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Delete reminder
+curl -X DELETE http://localhost:8080/api/reminders/REMINDER_ID \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -301,7 +392,7 @@ go build -o nitrous-api
 
 ## Next Steps
 
-- [ ] Add WebSocket for real-time updates
+- [ ] Expand live telemetry pipeline (producer integration + persistence)
 - [ ] Implement payment gateway (Stripe)
 - [ ] Add email verification
 - [ ] Rate limiting

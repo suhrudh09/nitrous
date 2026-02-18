@@ -72,6 +72,39 @@ func main() {
 			merch.GET("/:id", handlers.GetMerchItemByID)
 		}
 
+		// Teams
+		teams := api.Group("/teams")
+		{
+			teams.GET("", handlers.GetTeams)
+			teams.GET("/:id", handlers.GetTeamByID)
+			teams.POST("/:id/follow", middleware.AuthMiddleware(), handlers.FollowTeam)
+			teams.POST("/:id/unfollow", middleware.AuthMiddleware(), handlers.UnfollowTeam)
+		}
+
+		// Streams
+		streams := api.Group("/streams")
+		{
+			streams.GET("", handlers.GetStreams)
+			streams.GET("/:id", handlers.GetStreamByID)
+			streams.GET("/ws", handlers.StreamsWS)
+		}
+
+		// Reminders
+		reminders := api.Group("/reminders")
+		{
+			reminders.GET("", middleware.AuthMiddleware(), handlers.GetMyReminders)
+			reminders.POST("", middleware.AuthMiddleware(), handlers.SetReminder)
+			reminders.DELETE("/:id", middleware.AuthMiddleware(), handlers.DeleteReminder)
+		}
+
+		// Orders
+		orders := api.Group("/orders")
+		{
+			orders.GET("", middleware.AuthMiddleware(), handlers.GetMyOrders)
+			orders.POST("", middleware.AuthMiddleware(), handlers.CreateOrder)
+			orders.GET("/:id", middleware.AuthMiddleware(), handlers.GetOrderByID)
+		}
+
 		// Auth
 		auth := api.Group("/auth")
 		{

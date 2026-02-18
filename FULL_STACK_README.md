@@ -125,6 +125,35 @@ POST   /api/journeys/:id/book   Book journey (auth required)
 GET    /api/merch               All merch items
 ```
 
+### Teams
+```
+GET    /api/teams               All teams
+GET    /api/teams/:id           Single team
+POST   /api/teams/:id/follow    Follow team (auth required)
+POST   /api/teams/:id/unfollow  Unfollow team (auth required)
+```
+
+### Streams
+```
+GET    /api/streams             All streams
+GET    /api/streams/:id         Single stream
+GET    /api/streams/ws          WebSocket telemetry stream
+```
+
+### Orders
+```
+POST   /api/orders              Create merch order (auth required)
+GET    /api/orders              Current user's orders (auth required)
+GET    /api/orders/:id          Current user's order by ID (auth required)
+```
+
+### Reminders
+```
+GET    /api/reminders           Current user's reminders (auth required)
+POST   /api/reminders           Create reminder (auth required)
+DELETE /api/reminders/:id       Delete reminder (auth required)
+```
+
 ### Auth
 ```
 POST   /api/auth/register       Create account
@@ -162,6 +191,50 @@ curl -X POST http://localhost:8080/api/auth/login \
   }'
 ```
 
+### Teams
+```bash
+curl http://localhost:8080/api/teams
+
+curl -X POST http://localhost:8080/api/teams/TEAM_ID/follow \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Streams
+```bash
+curl http://localhost:8080/api/streams
+
+wscat -c ws://localhost:8080/api/streams/ws
+```
+
+### Orders
+```bash
+curl -X POST http://localhost:8080/api/orders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "merchItemId": "MERCH_ITEM_ID",
+    "quantity": 1
+  }'
+
+curl http://localhost:8080/api/orders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Reminders
+```bash
+curl -X POST http://localhost:8080/api/reminders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "eventId": "EVENT_ID",
+    "message": "Ping me before race",
+    "remindAt": "2026-03-20T09:00:00Z"
+  }'
+
+curl http://localhost:8080/api/reminders \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
 ---
 
 ## 🎨 Features Implemented
@@ -189,6 +262,10 @@ curl -X POST http://localhost:8080/api/auth/login \
 - ✅ Structured logging
 - ✅ Seed data for prototyping
 - ✅ Middleware architecture
+- ✅ Teams APIs (follow/unfollow)
+- ✅ Streams APIs + WebSocket telemetry hub
+- ✅ Orders APIs (create + per-user retrieval)
+- ✅ Reminders APIs (create/delete/list)
 
 ---
 
@@ -322,7 +399,7 @@ CREATE TABLE events (
 - [ ] Booking flow
 
 ### Phase 3: Production Features
-- [ ] Real-time updates (WebSocket)
+- [ ] Frontend integration for stream telemetry WebSocket
 - [ ] Payment integration (Stripe)
 - [ ] Email notifications
 - [ ] Admin dashboard

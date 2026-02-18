@@ -16,18 +16,64 @@ var (
 	Journeys   []models.Journey
 	MerchItems []models.MerchItem
 	Users      []models.User
+	Teams      []models.Team
+	Reminders  []models.Reminder
+	Orders     []models.Order
 )
 
 func InitDB() {
 	log.Println("Initializing in-memory database...")
-	
+
 	// Seed data
 	seedEvents()
 	seedCategories()
 	seedJourneys()
 	seedMerch()
-	
+	seedTeams()
+	seedReminders()
+	seedOrders()
+
 	log.Println("✓ Database initialized with seed data")
+}
+
+func seedReminders() {
+	Reminders = []models.Reminder{}
+}
+
+func seedOrders() {
+	Orders = []models.Order{}
+}
+
+func seedTeams() {
+	Teams = []models.Team{
+		{
+			ID:             uuid.New().String(),
+			Name:           "Redline Racing",
+			Country:        "USA",
+			Drivers:        []string{"A. Driver", "B. Driver"},
+			Followers:      []string{},
+			FollowersCount: 0,
+			CreatedAt:      time.Now(),
+		},
+		{
+			ID:             uuid.New().String(),
+			Name:           "Desert Rally Team",
+			Country:        "Saudi Arabia",
+			Drivers:        []string{"C. Driver"},
+			Followers:      []string{},
+			FollowersCount: 0,
+			CreatedAt:      time.Now(),
+		},
+		{
+			ID:             uuid.New().String(),
+			Name:           "AeroSpeed Crew",
+			Country:        "UK",
+			Drivers:        []string{"D. Pilot", "E. Pilot"},
+			Followers:      []string{},
+			FollowersCount: 0,
+			CreatedAt:      time.Now(),
+		},
+	}
 }
 
 func CloseDB() {
