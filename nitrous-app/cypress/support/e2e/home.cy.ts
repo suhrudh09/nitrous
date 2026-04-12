@@ -15,8 +15,8 @@ describe('Home Page Navigation', () => {
     cy.contains('Merch').should('be.visible')
   })
 
-  it('displays Sign In button', () => {
-    cy.contains('button', 'Sign In').should('be.visible')
+  it('displays Sign In link', () => {
+    cy.contains('a', 'Sign In').should('be.visible')
   })
 
   it('displays hero title and subtitle', () => {

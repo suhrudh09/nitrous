@@ -1,63 +1,10 @@
 'use client'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Nav from '@/components/Nav'
+import { getStreams } from '@/lib/api'
+import type { Stream, StreamTelemetry } from '@/types'
 import styles from './live.module.css'
-
-const liveStreams = [
-  {
-    id: '1',
-    title: 'NASCAR Daytona 500',
-    subtitle: 'Lap 87 / 200',
-    category: 'MOTORSPORT',
-    location: 'Daytona International Speedway · FL',
-    viewers: '1.2M',
-    quality: '4K',
-    color: 'red',
-    leader: 'Bubba Wallace #23',
-    speed: '198 mph',
-    hot: true,
-  },
-  {
-    id: '2',
-    title: 'World Dirt Track Championship',
-    subtitle: 'Heat 3 — Semi Finals',
-    category: 'MOTORSPORT',
-    location: 'Knob Noster · Missouri, USA',
-    viewers: '340K',
-    quality: 'HD',
-    color: 'orange',
-    leader: 'Kyle Larson #57',
-    speed: '142 mph',
-    hot: false,
-  },
-  {
-    id: '3',
-    title: 'Lake Como Speed Boat Qualifier',
-    subtitle: 'Qualifying Round 2',
-    category: 'WATER',
-    location: 'Lake Como · Italy',
-    viewers: '89K',
-    quality: 'HD',
-    color: 'cyan',
-    leader: 'F. Bertrand #9',
-    speed: '87 knots',
-    hot: false,
-  },
-  {
-    id: '4',
-    title: 'Red Bull Skydive Series',
-    subtitle: 'Live Drop — 14,800ft',
-    category: 'AIR',
-    location: 'Interlaken Drop Zone · Switzerland',
-    viewers: '220K',
-    quality: 'HD',
-    color: 'purple',
-    leader: 'A. Garnier',
-    speed: '120 mph',
-    hot: false,
-  },
-]
 
 const upcomingStreams = [
   { title: 'Baja 1000 — Stage 4', time: 'In 2h 14m', category: 'OFF-ROAD' },
@@ -67,8 +14,93 @@ const upcomingStreams = [
 ]
 
 export default function LivePage() {
-  const [active, setActive] = useState('1')
-  const featured = liveStreams.find(s => s.id === active) || liveStreams[0]
+  const [streams, setStreams] = useState<Stream[]>([])
+  const [active, setActive] = useState<string>('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // ── Fetch streams from API on mount ────────────────────────────────────────
+  useEffect(() => {
+    getStreams()
+      .then((data) => {
+        setStreams(data)
+        if (data.length > 0) setActive(data[0].id)
+      })
+      .catch(() => setError('Could not load streams'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  // ── WebSocket — real-time telemetry updates ────────────────────────────────
+  useEffect(() => {
+    const wsUrl =
+      process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws/streams'
+    const ws = new WebSocket(wsUrl)
+
+    ws.onmessage = (e) => {
+      try {
+        const telemetry: StreamTelemetry = JSON.parse(e.data)
+        setStreams((prev) =>
+          prev.map((s) =>
+            s.id === telemetry.streamId
+              ? {
+                  ...s,
+                  viewers: telemetry.viewers,
+                  currentLeader: telemetry.currentLeader,
+                  currentSpeed: telemetry.currentSpeed,
+                  subtitle: telemetry.subtitle,
+                }
+              : s
+          )
+        )
+      } catch {
+        // ignore malformed messages
+      }
+    }
+
+    ws.onerror = () => {
+      // WebSocket unavailable — REST data still shows, silently degrade
+    }
+
+    return () => {
+      ws.close()
+    }
+  }, [])
+
+  const featured = streams.find((s) => s.id === active) ?? streams[0]
+
+  const totalViewers = streams.reduce((acc, s) => acc + s.viewers, 0)
+  const viewerDisplay =
+    totalViewers >= 1_000_000
+      ? `${(totalViewers / 1_000_000).toFixed(1)}M`
+      : totalViewers >= 1_000
+      ? `${(totalViewers / 1_000).toFixed(0)}K`
+      : String(totalViewers)
+
+  if (loading) {
+    return (
+      <>
+        <Nav />
+        <main className={styles.page}>
+          <div style={{ padding: '120px 48px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+            LOADING STREAMS...
+          </div>
+        </main>
+      </>
+    )
+  }
+
+  if (error || streams.length === 0) {
+    return (
+      <>
+        <Nav />
+        <main className={styles.page}>
+          <div style={{ padding: '120px 48px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+            {error || 'NO LIVE STREAMS AT THIS TIME'}
+          </div>
+        </main>
+      </>
+    )
+  }
 
   return (
     <>
@@ -83,22 +115,22 @@ export default function LivePage() {
             </div>
             <h1 className={styles.pageTitle}>STREAMS</h1>
             <p className={styles.pageSubtitle}>
-              {liveStreams.length} channels broadcasting · {liveStreams.reduce((a, s) => a + parseFloat(s.viewers), 0).toFixed(1)}M+ watching
+              {streams.length} channel{streams.length !== 1 ? 's' : ''} broadcasting · {viewerDisplay}+ watching
             </p>
           </div>
           <div className={styles.headerStats}>
             <div className={styles.stat}>
-              <span className={styles.statVal}>4</span>
+              <span className={styles.statVal}>{streams.length}</span>
               <span className={styles.statLabel}>LIVE</span>
             </div>
             <div className={styles.statDivider}></div>
             <div className={styles.stat}>
-              <span className={styles.statVal}>1.8M</span>
+              <span className={styles.statVal}>{viewerDisplay}</span>
               <span className={styles.statLabel}>VIEWERS</span>
             </div>
             <div className={styles.statDivider}></div>
             <div className={styles.stat}>
-              <span className={styles.statVal}>3</span>
+              <span className={styles.statVal}>{upcomingStreams.length}</span>
               <span className={styles.statLabel}>UPCOMING</span>
             </div>
           </div>
@@ -107,7 +139,15 @@ export default function LivePage() {
         <div className={styles.grid}>
           {/* Main Player */}
           <div className={styles.playerWrap}>
-            <div className={`${styles.player} ${styles[`player${featured.color.charAt(0).toUpperCase() + featured.color.slice(1)}`]}`}>
+            <div
+              className={`${styles.player} ${
+                styles[
+                  `player${
+                    featured.color.charAt(0).toUpperCase() + featured.color.slice(1)
+                  }`
+                ]
+              }`}
+            >
               {/* Fake video overlay */}
               <div className={styles.playerNoise}></div>
               <div className={styles.playerScanlines}></div>
@@ -137,15 +177,21 @@ export default function LivePage() {
                 <div className={styles.playerMeta}>
                   <div className={styles.metaItem}>
                     <span className={styles.metaLabel}>LEADER</span>
-                    <span className={styles.metaVal}>{featured.leader}</span>
+                    <span className={styles.metaVal}>{featured.currentLeader}</span>
                   </div>
                   <div className={styles.metaItem}>
                     <span className={styles.metaLabel}>SPEED</span>
-                    <span className={styles.metaVal}>{featured.speed}</span>
+                    <span className={styles.metaVal}>{featured.currentSpeed}</span>
                   </div>
                   <div className={styles.metaItem}>
                     <span className={styles.metaLabel}>VIEWERS</span>
-                    <span className={styles.metaVal}>{featured.viewers}</span>
+                    <span className={styles.metaVal}>
+                      {featured.viewers >= 1_000_000
+                        ? `${(featured.viewers / 1_000_000).toFixed(1)}M`
+                        : featured.viewers >= 1_000
+                        ? `${(featured.viewers / 1_000).toFixed(0)}K`
+                        : featured.viewers}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -176,10 +222,18 @@ export default function LivePage() {
             <div className={styles.sideSection}>
               <div className={styles.sideLabel}>LIVE CHANNELS</div>
               <div className={styles.channelList}>
-                {liveStreams.map(stream => (
+                {streams.map((stream) => (
                   <div
                     key={stream.id}
-                    className={`${styles.channelCard} ${active === stream.id ? styles.channelCardActive : ''} ${styles[`channelCard${stream.color.charAt(0).toUpperCase() + stream.color.slice(1)}`]}`}
+                    className={`${styles.channelCard} ${
+                      active === stream.id ? styles.channelCardActive : ''
+                    } ${
+                      styles[
+                        `channelCard${
+                          stream.color.charAt(0).toUpperCase() + stream.color.slice(1)
+                        }`
+                      ]
+                    }`}
                     onClick={() => setActive(stream.id)}
                   >
                     <div className={styles.channelTop}>
@@ -187,10 +241,19 @@ export default function LivePage() {
                         <span className={styles.liveDotSm}></span>
                         {stream.category}
                       </div>
-                      <div className={styles.channelViewers}>👁 {stream.viewers}</div>
+                      <div className={styles.channelViewers}>
+                        👁{' '}
+                        {stream.viewers >= 1_000_000
+                          ? `${(stream.viewers / 1_000_000).toFixed(1)}M`
+                          : stream.viewers >= 1_000
+                          ? `${(stream.viewers / 1_000).toFixed(0)}K`
+                          : stream.viewers}
+                      </div>
                     </div>
                     <div className={styles.channelTitle}>{stream.title}</div>
-                    <div className={styles.channelSub}>{stream.subtitle} · {stream.location}</div>
+                    <div className={styles.channelSub}>
+                      {stream.subtitle} · {stream.location}
+                    </div>
                   </div>
                 ))}
               </div>

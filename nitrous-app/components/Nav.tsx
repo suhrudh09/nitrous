@@ -21,7 +21,7 @@ export default function Nav() {
           <div className={styles.dotLive} />
           <span>4 Events Live</span>
         </div>
-        <button className={styles.btnNav}>Sign In</button>
+        <Link href="/login" className={styles.btnNav}>Sign In</Link>
       </div>
     </nav>
   )

@@ -1,92 +1,8 @@
+'use client'
+import { useState, useEffect } from 'react'
 import Nav from '@/components/Nav'
+import { getTeams, followTeam, unfollowTeam } from '@/lib/api'
 import styles from './teams.module.css'
-
-const teams = [
-  {
-    id: '1',
-    name: 'RED BULL RACING',
-    category: 'MOTORSPORT · F1',
-    country: '🇦🇹 Austria',
-    drivers: ['Max Verstappen', 'Sergio Pérez'],
-    wins: 21,
-    points: 860,
-    color: 'red',
-    accentColor: '#1e3a8a',
-    rank: 1,
-    following: '8.2M',
-    founded: 2005,
-  },
-  {
-    id: '2',
-    name: 'HENDRICK MOTORSPORTS',
-    category: 'MOTORSPORT · NASCAR',
-    country: '🇺🇸 USA',
-    drivers: ['Kyle Larson', 'Chase Elliott', 'William Byron', 'Alex Bowman'],
-    wins: 14,
-    points: 2340,
-    color: 'cyan',
-    accentColor: '#c41e3a',
-    rank: 2,
-    following: '3.1M',
-    founded: 1984,
-  },
-  {
-    id: '3',
-    name: 'TOYOTA GAZOO RACING',
-    category: 'RALLY · WRC',
-    country: '🇯🇵 Japan',
-    drivers: ['Sébastien Ogier', 'Elfyn Evans', 'Kalle Rovanperä'],
-    wins: 9,
-    points: 564,
-    color: 'orange',
-    accentColor: '#dc2626',
-    rank: 3,
-    following: '1.8M',
-    founded: 1957,
-  },
-  {
-    id: '4',
-    name: 'TEAM SEA FORCE',
-    category: 'WATER · SPEED BOAT',
-    country: '🇮🇹 Italy',
-    drivers: ['F. Bertrand', 'L. Capelli'],
-    wins: 7,
-    points: 320,
-    color: 'blue',
-    accentColor: '#0e7490',
-    rank: 4,
-    following: '420K',
-    founded: 2010,
-  },
-  {
-    id: '5',
-    name: 'FALCON AIR SQUADRON',
-    category: 'AIR · AIR RACING',
-    country: '🇫🇷 France',
-    drivers: ['A. Garnier', 'B. Morin'],
-    wins: 5,
-    points: 198,
-    color: 'purple',
-    accentColor: '#7c3aed',
-    rank: 5,
-    following: '280K',
-    founded: 2015,
-  },
-  {
-    id: '6',
-    name: 'BAJA IRON SQUAD',
-    category: 'OFF-ROAD · TROPHY TRUCK',
-    country: '🇲🇽 Mexico',
-    drivers: ['C. Wedekin', 'P. McMillin'],
-    wins: 12,
-    points: 415,
-    color: 'gold',
-    accentColor: '#92400e',
-    rank: 6,
-    following: '640K',
-    founded: 1998,
-  },
-]
 
 const colorMap: Record<string, string> = {
   red: 'var(--red)',
@@ -98,6 +14,51 @@ const colorMap: Record<string, string> = {
 }
 
 export default function TeamsPage() {
+  const [teams, setTeams] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
+  const [processingId, setProcessingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const data = await getTeams()
+        setTeams(data)
+      } catch (error) {
+        console.error('Failed to fetch teams:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  const handleFollow = async (teamId: string) => {
+    const token = localStorage.getItem('authToken')
+    if (!token) {
+      window.location.href = '/login'
+      return
+    }
+
+    setProcessingId(teamId)
+    try {
+      if (followingIds.has(teamId)) {
+        await unfollowTeam(teamId, token)
+        setFollowingIds(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(teamId)
+          return newSet
+        })
+      } else {
+        await followTeam(teamId, token)
+        setFollowingIds(prev => new Set([...prev, teamId]))
+      }
+    } catch (error) {
+      console.error('Failed to toggle follow:', error)
+    } finally {
+      setProcessingId(null)
+    }
+  }
   return (
     <>
       <Nav />
@@ -147,7 +108,7 @@ export default function TeamsPage() {
                 {/* Team Logo Area */}
                 <div className={styles.logoArea} style={{ background: `linear-gradient(135deg, ${team.accentColor}33 0%, transparent 60%)` }}>
                   <div className={styles.logoCircle} style={{ borderColor: accentRgb }}>
-                    <span className={styles.logoInitials}>{team.name.split(' ').map(w => w[0]).join('').slice(0,3)}</span>
+                    <span className={styles.logoInitials}>{team.name.split(' ').map((w: string) => w[0]).join('').slice(0,3)}</span>
                   </div>
                 </div>
 
@@ -161,7 +122,7 @@ export default function TeamsPage() {
                 <div className={styles.driversSection}>
                   <div className={styles.driversLabel}>ROSTER</div>
                   <div className={styles.driversList}>
-                    {team.drivers.map((d, i) => (
+                    {team.drivers.map((d: string, i: number) => (
                       <div key={i} className={styles.driverChip}>{d}</div>
                     ))}
                   </div>
@@ -186,8 +147,18 @@ export default function TeamsPage() {
                 </div>
 
                 {/* Action */}
-                <button className={styles.followBtn} style={{ borderColor: accentRgb, color: accentRgb }}>
-                  + FOLLOW TEAM
+                <button 
+                  className={styles.followBtn} 
+                  style={{ borderColor: accentRgb, color: accentRgb }}
+                  onClick={() => handleFollow(team.id)}
+                  disabled={processingId === team.id}
+                >
+                  {processingId === team.id 
+                    ? '⏳ ...' 
+                    : followingIds.has(team.id) 
+                    ? '✓ FOLLOWING' 
+                    : '+ FOLLOW TEAM'
+                  }
                 </button>
               </div>
             )

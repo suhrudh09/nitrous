@@ -1,20 +1,9 @@
 'use client'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Nav from '@/components/Nav'
+import { getEvents, setReminder } from '@/lib/api'
 import styles from './events.module.css'
-
-const allEvents = [
-  { id: '1', title: 'NASCAR Daytona 500', location: 'Daytona International Speedway · FL', date: 'Feb 16, 2026', time: 'LIVE NOW', isLive: true, category: 'motorsport', viewers: '1.2M', price: null },
-  { id: '2', title: 'World Dirt Track Championship', location: 'Knob Noster · Missouri, USA', date: 'Feb 21, 2026', time: '20:00 UTC', isLive: true, category: 'motorsport', viewers: '340K', price: null },
-  { id: '3', title: 'Dakar Rally — Stage 9', location: 'Al Ula → Ha\'il · Saudi Arabia', date: 'Feb 10, 2026', time: '09:00 UTC', isLive: false, category: 'offroad', viewers: null, price: 'Free' },
-  { id: '4', title: 'Speed Boat Cup — Finals', location: 'Lake Como · Italy', date: 'Mar 2, 2026', time: '14:00 UTC', isLive: false, category: 'water', viewers: null, price: '$12' },
-  { id: '5', title: 'Red Bull Skydive Series — Rd. 3', location: 'Interlaken Drop Zone · Switzerland', date: 'Mar 8, 2026', time: '11:30 UTC', isLive: false, category: 'air', viewers: null, price: 'Free' },
-  { id: '6', title: 'Crop Duster Air Racing', location: 'Bakersfield Airfield · California', date: 'Mar 14, 2026', time: '16:00 UTC', isLive: false, category: 'air', viewers: null, price: '$8' },
-  { id: '7', title: 'Baja 1000 Extreme', location: 'Ensenada · Baja California, Mexico', date: 'Mar 20, 2026', time: '08:00 UTC', isLive: false, category: 'offroad', viewers: null, price: 'Free' },
-  { id: '8', title: 'Formula E — Monaco Round', location: 'Circuit de Monaco · Monte Carlo', date: 'Apr 5, 2026', time: '15:00 UTC', isLive: false, category: 'motorsport', viewers: null, price: '$15' },
-  { id: '9', title: 'Jet Ski World Championship', location: 'Miami Beach · Florida', date: 'Apr 12, 2026', time: '12:00 UTC', isLive: false, category: 'water', viewers: null, price: '$10' },
-]
 
 const cats = ['all', 'motorsport', 'offroad', 'water', 'air']
 
@@ -33,8 +22,44 @@ const catIcons: Record<string, string> = {
 }
 
 export default function EventsPage() {
+  const [allEvents, setAllEvents] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [liveOnly, setLiveOnly] = useState(false)
+  const [remindingId, setRemindingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const events = await getEvents()
+        setAllEvents(events)
+      } catch (error) {
+        console.error('Failed to fetch events:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  const handleSetReminder = async (eventId: string) => {
+    const token = localStorage.getItem('authToken')
+    if (!token) {
+      window.location.href = '/login'
+      return
+    }
+
+    setRemindingId(eventId)
+    try {
+      await setReminder(eventId, token)
+      console.log('Reminder set for event:', eventId)
+      // Optionally show a success message
+    } catch (error) {
+      console.error('Failed to set reminder:', error)
+    } finally {
+      setRemindingId(null)
+    }
+  }
 
   const filtered = allEvents.filter(e => {
     if (liveOnly && !e.isLive) return false
@@ -128,7 +153,13 @@ export default function EventsPage() {
                 {event.isLive ? (
                   <Link href="/live" className={styles.btnWatch}>▶ Watch Live</Link>
                 ) : (
-                  <button className={styles.btnRemind}>Set Reminder</button>
+                  <button 
+                    className={styles.btnRemind}
+                    onClick={() => handleSetReminder(event.id)}
+                    disabled={remindingId === event.id}
+                  >
+                    {remindingId === event.id ? '⏳ Setting...' : 'Set Reminder'}
+                  </button>
                 )}
                 <button className={styles.btnMore}>···</button>
               </div>

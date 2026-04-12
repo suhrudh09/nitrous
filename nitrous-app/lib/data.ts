@@ -119,7 +119,7 @@ export const journeys: Journey[] = [
     id: '3',
     title: 'RED BULL TANDEM SKYDIVE',
     category: 'AIR · EXTREME SPORT',
-    description: 'Jump with a Red Bull certified instructor at 15,000ft. Camera-equipped, full debrief, and a story you'll never forget.',
+    description: 'Jump with a Red Bull certified instructor at 15,000ft. Camera-equipped, full debrief, and a story you\'ll never forget.',
     badge: 'LIMITED',
     slotsLeft: 3,
     date: 'Mar 8, 2026',
