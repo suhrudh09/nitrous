@@ -29,6 +29,8 @@ func SetReminder(c *gin.Context) {
 		return
 	}
 
+	database.Mu.RLock()
+
 	eventExists := false
 	for _, event := range database.Events {
 		if event.ID == req.EventID {
@@ -36,6 +38,7 @@ func SetReminder(c *gin.Context) {
 			break
 		}
 	}
+	database.Mu.RUnlock()
 
 	if !eventExists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
@@ -51,7 +54,9 @@ func SetReminder(c *gin.Context) {
 		CreatedAt: time.Now(),
 	}
 
+	database.Mu.Lock()
 	database.Reminders = append(database.Reminders, reminder)
+	database.Mu.Unlock()
 
 	c.JSON(http.StatusCreated, reminder)
 }
@@ -65,19 +70,23 @@ func DeleteReminder(c *gin.Context) {
 	}
 
 	reminderID := c.Param("id")
+	database.Mu.Lock()
 
 	for i, reminder := range database.Reminders {
 		if reminder.ID == reminderID {
 			if reminder.UserID != userID.(string) {
+				database.Mu.Unlock()
 				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 				return
 			}
 
 			database.Reminders = append(database.Reminders[:i], database.Reminders[i+1:]...)
+			database.Mu.Unlock()
 			c.JSON(http.StatusOK, gin.H{"message": "Reminder deleted"})
 			return
 		}
 	}
+	database.Mu.Unlock()
 
 	c.JSON(http.StatusNotFound, gin.H{"error": "Reminder not found"})
 }
@@ -89,6 +98,9 @@ func GetMyReminders(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
+
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
 
 	var reminders []models.Reminder
 	for _, reminder := range database.Reminders {

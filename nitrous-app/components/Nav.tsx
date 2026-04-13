@@ -9,7 +9,7 @@ export default function Nav() {
       </Link>
       
       <div className={styles.navCenter}>
-        <Link href="/" className={styles.navLink}>Live</Link>
+        <Link href="/live" className={styles.navLink}>Live</Link>
         <Link href="/events" className={styles.navLink}>Events</Link>
         <Link href="/teams" className={styles.navLink}>Teams</Link>
         <Link href="/journeys" className={styles.navLink}>Journeys</Link>

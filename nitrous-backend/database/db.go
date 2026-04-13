@@ -3,6 +3,7 @@ package database
 import (
 	"log"
 	"nitrous-backend/models"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 // In-memory storage for prototype
 // Replace with actual DB connection for production
 var (
+	Mu         sync.RWMutex
 	Events     []models.Event
 	Categories []models.Category
 	Journeys   []models.Journey
@@ -67,35 +69,7 @@ func seedOrders() {
 }
 
 func seedTeams() {
-	Teams = []models.Team{
-		{
-			ID:             uuid.New().String(),
-			Name:           "Redline Racing",
-			Country:        "USA",
-			Drivers:        []string{"A. Driver", "B. Driver"},
-			Followers:      []string{},
-			FollowersCount: 0,
-			CreatedAt:      time.Now(),
-		},
-		{
-			ID:             uuid.New().String(),
-			Name:           "Desert Rally Team",
-			Country:        "Saudi Arabia",
-			Drivers:        []string{"C. Driver"},
-			Followers:      []string{},
-			FollowersCount: 0,
-			CreatedAt:      time.Now(),
-		},
-		{
-			ID:             uuid.New().String(),
-			Name:           "AeroSpeed Crew",
-			Country:        "UK",
-			Drivers:        []string{"D. Pilot", "E. Pilot"},
-			Followers:      []string{},
-			FollowersCount: 0,
-			CreatedAt:      time.Now(),
-		},
-	}
+	Teams = []models.Team{}
 }
 
 func CloseDB() {
@@ -106,35 +80,8 @@ func seedEvents() {
 	Events = []models.Event{
 		{
 			ID:       uuid.New().String(),
-			Title:    "NASCAR Daytona 500",
-			Location: "Daytona International Speedway · Florida",
-			Date:     time.Now().Add(10 * 24 * time.Hour),
-			IsLive:   true,
-			Category: "motorsport",
-			Time:     "15:00 UTC",
-		},
-		{
-			ID:       uuid.New().String(),
-			Title:    "Dakar Rally — Stage 9",
-			Location: "Al Ula → Ha'il · Saudi Arabia",
-			Date:     time.Now().Add(-2 * 24 * time.Hour),
-			IsLive:   false,
-			Category: "offroad",
-			Time:     "09:00 UTC",
-		},
-		{
-			ID:       uuid.New().String(),
-			Title:    "World Dirt Track Championship",
-			Location: "Knob Noster · Missouri, USA",
-			Date:     time.Now().Add(5 * 24 * time.Hour),
-			IsLive:   true,
-			Category: "motorsport",
-			Time:     "18:00 UTC",
-		},
-		{
-			ID:       uuid.New().String(),
-			Title:    "Speed Boat Cup — Finals",
-			Location: "Lake Como · Italy",
+			Title:    "Speed Boat Cup - Finals",
+			Location: "Lake Como - Italy",
 			Date:     time.Now().Add(14 * 24 * time.Hour),
 			IsLive:   false,
 			Category: "water",
@@ -142,8 +89,8 @@ func seedEvents() {
 		},
 		{
 			ID:       uuid.New().String(),
-			Title:    "Red Bull Skydive Series — Rd. 3",
-			Location: "Interlaken Drop Zone · Switzerland",
+			Title:    "Red Bull Skydive Series - Rd. 3",
+			Location: "Interlaken Drop Zone - Switzerland",
 			Date:     time.Now().Add(20 * 24 * time.Hour),
 			IsLive:   false,
 			Category: "air",
@@ -152,7 +99,7 @@ func seedEvents() {
 		{
 			ID:       uuid.New().String(),
 			Title:    "Crop Duster Air Racing",
-			Location: "Bakersfield Airfield · California",
+			Location: "Bakersfield Airfield - California",
 			Date:     time.Now().Add(26 * 24 * time.Hour),
 			IsLive:   false,
 			Category: "air",
@@ -167,36 +114,36 @@ func seedCategories() {
 			ID:          uuid.New().String(),
 			Name:        "MOTORSPORT",
 			Slug:        "motorsport",
-			Icon:        "🏎️",
+			Icon:        "R",
 			LiveCount:   24,
-			Description: "NASCAR · F1 · Dirt · Rally",
+			Description: "NASCAR - F1 - Dirt - Rally",
 			Color:       "cyan",
 		},
 		{
 			ID:          uuid.New().String(),
 			Name:        "WATER",
 			Slug:        "water",
-			Icon:        "🌊",
+			Icon:        "W",
 			LiveCount:   8,
-			Description: "Speed Boats · Jet Ski · Surf",
+			Description: "Speed Boats - Jet Ski - Surf",
 			Color:       "blue",
 		},
 		{
 			ID:          uuid.New().String(),
 			Name:        "AIR & SKY",
 			Slug:        "air",
-			Icon:        "🪂",
+			Icon:        "A",
 			LiveCount:   5,
-			Description: "Skydive · Air Race · Wing",
+			Description: "Skydive - Air Race - Wing",
 			Color:       "purple",
 		},
 		{
 			ID:          uuid.New().String(),
 			Name:        "OFF-ROAD",
 			Slug:        "offroad",
-			Icon:        "🏔️",
+			Icon:        "O",
 			LiveCount:   12,
-			Description: "Dakar · Baja · Enduro",
+			Description: "Dakar - Baja - Enduro",
 			Color:       "orange",
 		},
 	}
@@ -207,7 +154,7 @@ func seedJourneys() {
 		{
 			ID:          uuid.New().String(),
 			Title:       "DAYTONA PIT CREW EXPERIENCE",
-			Category:    "MOTORSPORT · BEHIND THE SCENES",
+			Category:    "MOTORSPORT - BEHIND THE SCENES",
 			Description: "Go behind the wall at Daytona 500. Watch pit stops up close, meet the crew chiefs, and ride the pace car on track.",
 			Badge:       "EXCLUSIVE",
 			SlotsLeft:   12,
@@ -217,7 +164,7 @@ func seedJourneys() {
 		{
 			ID:          uuid.New().String(),
 			Title:       "DAKAR DESERT CONVOY",
-			Category:    "RALLY · DESERT EXPEDITION",
+			Category:    "RALLY - DESERT EXPEDITION",
 			Description: "Ride a support vehicle through the Dakar stages. Sleep under the stars, eat with the team, and feel the dust.",
 			Badge:       "MEMBERS ONLY",
 			SlotsLeft:   6,
@@ -227,7 +174,7 @@ func seedJourneys() {
 		{
 			ID:          uuid.New().String(),
 			Title:       "RED BULL TANDEM SKYDIVE",
-			Category:    "AIR · EXTREME SPORT",
+			Category:    "AIR - EXTREME SPORT",
 			Description: "Jump with a Red Bull certified instructor at 15,000ft. Camera-equipped, full debrief, and a story you'll never forget.",
 			Badge:       "LIMITED",
 			SlotsLeft:   3,
@@ -239,11 +186,11 @@ func seedJourneys() {
 
 func seedMerch() {
 	MerchItems = []models.MerchItem{
-		{ID: uuid.New().String(), Name: "Team Hoodie", Icon: "👕", Price: 89, Category: "apparel"},
-		{ID: uuid.New().String(), Name: "NITROUS Cap", Icon: "🧢", Price: 42, Category: "apparel"},
-		{ID: uuid.New().String(), Name: "Racing Jacket", Icon: "🏎️", Price: 189, Category: "apparel"},
-		{ID: uuid.New().String(), Name: "Pit Watch", Icon: "⌚", Price: 249, Category: "accessories"},
-		{ID: uuid.New().String(), Name: "Gear Backpack", Icon: "🎒", Price: 120, Category: "accessories"},
-		{ID: uuid.New().String(), Name: "Drop Keychain", Icon: "🏆", Price: 28, Category: "collectibles"},
+		{ID: uuid.New().String(), Name: "Team Hoodie", Icon: "H", Price: 89, Category: "apparel"},
+		{ID: uuid.New().String(), Name: "NITROUS Cap", Icon: "C", Price: 42, Category: "apparel"},
+		{ID: uuid.New().String(), Name: "Racing Jacket", Icon: "J", Price: 189, Category: "apparel"},
+		{ID: uuid.New().String(), Name: "Pit Watch", Icon: "W", Price: 249, Category: "accessories"},
+		{ID: uuid.New().String(), Name: "Gear Backpack", Icon: "B", Price: 120, Category: "accessories"},
+		{ID: uuid.New().String(), Name: "Drop Keychain", Icon: "K", Price: 28, Category: "collectibles"},
 	}
 }

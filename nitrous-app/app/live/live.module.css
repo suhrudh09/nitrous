@@ -117,6 +117,116 @@
   cursor: pointer;
 }
 
+.playerVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+  z-index: 0;
+}
+
+.noPlayback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 1.2px;
+  z-index: 2;
+}
+
+.telemetryPanel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 18px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(0, 229, 255, 0.12), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(255, 42, 42, 0.10), transparent 35%),
+    #060b16;
+}
+
+.telemetryTitle {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 2.4px;
+  color: var(--cyan);
+}
+
+.telemetryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.telemetryCard {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.telemetryLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.8px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 6px;
+}
+
+.telemetryValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.watchOptions {
+  margin-top: 4px;
+}
+
+.watchOptionsLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.watchButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.watchButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  background: rgba(0, 229, 255, 0.12);
+  color: #dffbff;
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.8px;
+}
+
+.watchButton:hover {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: rgba(0, 229, 255, 0.55);
+}
+
 .playerRed { border-color: rgba(255, 42, 42, 0.3); box-shadow: 0 0 40px rgba(255, 42, 42, 0.08); }
 .playerOrange { border-color: rgba(255, 102, 0, 0.3); box-shadow: 0 0 40px rgba(255, 102, 0, 0.08); }
 .playerCyan { border-color: rgba(0, 229, 255, 0.3); box-shadow: 0 0 40px rgba(0, 229, 255, 0.08); }
@@ -182,6 +292,18 @@
   letter-spacing: 2px;
 }
 
+.playerStatus {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--cyan);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  padding: 3px 8px;
+  border-radius: 2px;
+  background: rgba(0, 229, 255, 0.08);
+}
+
 .playerQuality {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -214,12 +336,28 @@
   color: #fff;
   transition: all 0.25s;
   backdrop-filter: blur(6px);
+  cursor: pointer;
 }
 
 .playBtn:hover {
   background: rgba(0,229,255,0.15);
   border-color: var(--cyan);
   box-shadow: 0 0 20px var(--cyan-glow);
+}
+
+.playerMessage {
+  position: absolute;
+  top: 58px;
+  left: 16px;
+  z-index: 4;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px 8px;
+  border-radius: 3px;
 }
 
 .playerHudBot {

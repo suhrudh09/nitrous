@@ -147,7 +147,7 @@ func TestStreamManagementAdminRoutes(t *testing.T) {
 	seedAdminAndUser()
 
 	originalStreams := streams
-	streams = []Stream{{ID: "s-1", Title: "Main", Category: "motorsport", IsLive: true, ViewerCount: 100}}
+	streams = []Stream{{ID: "s-1", Title: "Main", Category: "motorsport", IsLive: true, Viewers: 100, Color: "cyan"}}
 	defer func() { streams = originalStreams }()
 
 	r := gin.New()
@@ -155,7 +155,7 @@ func TestStreamManagementAdminRoutes(t *testing.T) {
 	r.PUT("/streams/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), UpdateStream)
 	r.DELETE("/streams/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), DeleteStream)
 
-	createPayload := map[string]any{"id": "s-2", "title": "Alt", "category": "air", "isLive": false, "viewerCount": 0}
+	createPayload := map[string]any{"id": "s-2", "title": "Alt", "category": "air", "isLive": false, "viewers": 0, "color": "blue"}
 
 	w := performJSONRequest(r, http.MethodPost, "/streams", createPayload, "")
 	if w.Code != http.StatusUnauthorized {
@@ -174,7 +174,7 @@ func TestStreamManagementAdminRoutes(t *testing.T) {
 		t.Fatalf("expected 201 for admin create, got %d", w.Code)
 	}
 
-	updatePayload := map[string]any{"title": "Main Updated", "category": "motorsport", "isLive": true, "viewerCount": 200}
+	updatePayload := map[string]any{"title": "Main Updated", "category": "motorsport", "isLive": true, "viewers": 200, "color": "cyan"}
 	w = performJSONRequest(r, http.MethodPut, "/streams/s-1", updatePayload, adminToken)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for admin update, got %d", w.Code)

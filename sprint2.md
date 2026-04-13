@@ -147,6 +147,7 @@ npm run cypress:run
 #### Test files added
 - `nitrous-backend/handlers/auth_handlers_test.go`
 - `nitrous-backend/handlers/admin_management_test.go`
+- `nitrous-backend/handlers/handlers_test.go`
 - `nitrous-backend/handlers/events_mutations_test.go`
 - `nitrous-backend/handlers/journeys_teams_test.go`
 - `nitrous-backend/handlers/orders_reminders_test.go`
@@ -167,6 +168,16 @@ npm run cypress:run
   - `TestCreateEventEndpoint`
   - `TestUpdateEventEndpoint`
   - `TestDeleteEventEndpoint`
+- Public/read route coverage
+  - `TestGetEvents_ListAndCategoryFilter`
+  - `TestGetLiveEvents_ReturnsOnlyLive`
+  - `TestGetEventByID_FoundAndNotFound`
+  - `TestCategories_ListAndBySlug`
+  - `TestJourneys_ListAndByID`
+  - `TestMerch_ListAndByID`
+  - `TestTeams_ListAndByID`
+  - `TestStreams_ListAndByID`
+  - `TestStreamsWS_UpgradeAndTelemetryBroadcast`
 - Admin management routes
   - `TestCategoryManagementAdminRoutes`
   - `TestJourneyCatalogManagementAdminRoutes`

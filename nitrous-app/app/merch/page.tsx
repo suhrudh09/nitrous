@@ -20,6 +20,8 @@ interface CartEntry {
   size?: string
 }
 
+const CART_STORAGE_KEY = 'nitrous_cart_v1'
+
 export default function MerchPage() {
   const [products, setProducts] = useState<MerchItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,6 +34,14 @@ export default function MerchPage() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutMsg, setCheckoutMsg] = useState('')
 
+  const persistCart = (nextCart: CartEntry[]) => {
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextCart))
+    } catch {
+      // Ignore persistence errors (quota/private mode), keep cart in memory.
+    }
+  }
+
   useEffect(() => {
     getMerchItems()
       .then(setProducts)
@@ -39,18 +49,47 @@ export default function MerchPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CART_STORAGE_KEY)
+      if (!raw) return
+
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return
+
+      const hydrated: CartEntry[] = parsed
+        .filter((entry) => entry && entry.item && typeof entry.item.id === 'string')
+        .map((entry) => ({
+          item: entry.item as MerchItem,
+          quantity:
+            typeof entry.quantity === 'number' && entry.quantity > 0
+              ? Math.floor(entry.quantity)
+              : 1,
+          size: typeof entry.size === 'string' ? entry.size : undefined,
+        }))
+
+      setCart(hydrated)
+    } catch {
+      localStorage.removeItem(CART_STORAGE_KEY)
+    }
+  }, [cart])
+
   const filtered =
     filter === 'all' ? products : products.filter((p) => p.category === filter)
 
   function addToCart(item: MerchItem) {
     setCart((prev) => {
       const existing = prev.find((e) => e.item.id === item.id)
+      let next: CartEntry[]
       if (existing) {
-        return prev.map((e) =>
+        next = prev.map((e) =>
           e.item.id === item.id ? { ...e, quantity: e.quantity + 1 } : e
         )
+      } else {
+        next = [...prev, { item, quantity: 1 }]
       }
-      return [...prev, { item, quantity: 1 }]
+      persistCart(next)
+      return next
     })
     setAdded(item.id)
     setTimeout(() => setAdded(null), 1200)
@@ -78,6 +117,7 @@ export default function MerchPage() {
     try {
       const result = await createOrder(orderItems, token)
       setCart([])
+      persistCart([])
       setCheckoutMsg(`✓ Order #${result.order.id.slice(0, 8).toUpperCase()} placed — total $${result.order.total}`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Checkout failed'

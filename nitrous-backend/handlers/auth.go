@@ -21,6 +21,9 @@ func Register(c *gin.Context) {
 		return
 	}
 	
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
 	// Check if user already exists
 	for _, user := range database.Users {
 		if user.Email == req.Email {
@@ -70,6 +73,9 @@ func Login(c *gin.Context) {
 		return
 	}
 	
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	// Find user
 	var foundUser *models.User
 	for _, user := range database.Users {
@@ -112,6 +118,9 @@ func GetCurrentUser(c *gin.Context) {
 		return
 	}
 	
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	// Find user
 	for _, user := range database.Users {
 		if user.ID == userID.(string) {

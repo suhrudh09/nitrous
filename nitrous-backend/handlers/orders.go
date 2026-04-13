@@ -24,7 +24,9 @@ func CreateOrder(c *gin.Context) {
 		return
 	}
 
+	database.Mu.RLock()
 	var merchItem *models.MerchItem
+
 	for _, item := range database.MerchItems {
 		if item.ID == req.MerchItemID {
 			itemCopy := item
@@ -32,6 +34,7 @@ func CreateOrder(c *gin.Context) {
 			break
 		}
 	}
+	database.Mu.RUnlock()
 
 	if merchItem == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Merch item not found"})
@@ -49,7 +52,9 @@ func CreateOrder(c *gin.Context) {
 		CreatedAt:   time.Now(),
 	}
 
+	database.Mu.Lock()
 	database.Orders = append(database.Orders, order)
+	database.Mu.Unlock()
 
 	c.JSON(http.StatusCreated, order)
 }
@@ -61,6 +66,9 @@ func GetMyOrders(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
+
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
 
 	var orders []models.Order
 	for _, order := range database.Orders {
@@ -84,18 +92,22 @@ func GetOrderByID(c *gin.Context) {
 	}
 
 	orderID := c.Param("id")
+	database.Mu.RLock()
 
 	for _, order := range database.Orders {
 		if order.ID == orderID {
 			if order.UserID != userID.(string) {
+				database.Mu.RUnlock()
 				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 				return
 			}
 
+			database.Mu.RUnlock()
 			c.JSON(http.StatusOK, order)
 			return
 		}
 	}
+	database.Mu.RUnlock()
 
 	c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 }
@@ -109,10 +121,12 @@ func CancelOrder(c *gin.Context) {
 	}
 
 	orderID := c.Param("id")
+	database.Mu.Lock()
 
 	for i, order := range database.Orders {
 		if order.ID == orderID {
 			if order.UserID != userID.(string) {
+				database.Mu.Unlock()
 				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 				return
 			}
@@ -123,10 +137,12 @@ func CancelOrder(c *gin.Context) {
 			}
 
 			database.Orders[i].Status = "cancelled"
+			database.Mu.Unlock()
 			c.JSON(http.StatusOK, database.Orders[i])
 			return
 		}
 	}
+	database.Mu.Unlock()
 
 	c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 }

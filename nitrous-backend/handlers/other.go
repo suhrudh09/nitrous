@@ -12,6 +12,9 @@ import (
 
 // GetCategories returns all categories
 func GetCategories(c *gin.Context) {
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"categories": database.Categories,
 		"count":      len(database.Categories),
@@ -22,6 +25,9 @@ func GetCategories(c *gin.Context) {
 func GetCategoryBySlug(c *gin.Context) {
 	slug := c.Param("slug")
 	
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	for _, category := range database.Categories {
 		if category.Slug == slug {
 			c.JSON(http.StatusOK, category)
@@ -42,6 +48,9 @@ func CreateCategory(c *gin.Context) {
 	}
 
 	category.ID = uuid.New().String()
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
 	database.Categories = append(database.Categories, category)
 
 	c.JSON(http.StatusCreated, category)
@@ -56,6 +65,9 @@ func UpdateCategory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
 
 	for i, category := range database.Categories {
 		if category.Slug == slug {
@@ -74,6 +86,9 @@ func UpdateCategory(c *gin.Context) {
 func DeleteCategory(c *gin.Context) {
 	slug := c.Param("slug")
 
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
 	for i, category := range database.Categories {
 		if category.Slug == slug {
 			database.Categories = append(database.Categories[:i], database.Categories[i+1:]...)
@@ -87,6 +102,9 @@ func DeleteCategory(c *gin.Context) {
 
 // GetJourneys returns all journeys
 func GetJourneys(c *gin.Context) {
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"journeys": database.Journeys,
 		"count":    len(database.Journeys),
@@ -97,6 +115,9 @@ func GetJourneys(c *gin.Context) {
 func GetJourneyByID(c *gin.Context) {
 	id := c.Param("id")
 	
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	for _, journey := range database.Journeys {
 		if journey.ID == id {
 			c.JSON(http.StatusOK, journey)
@@ -121,6 +142,9 @@ func CreateJourney(c *gin.Context) {
 		journey.Date = time.Now().Add(24 * time.Hour)
 	}
 
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
 	database.Journeys = append(database.Journeys, journey)
 	c.JSON(http.StatusCreated, journey)
 }
@@ -134,6 +158,9 @@ func UpdateJourney(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
 
 	for i, journey := range database.Journeys {
 		if journey.ID == id {
@@ -151,6 +178,9 @@ func UpdateJourney(c *gin.Context) {
 func DeleteJourney(c *gin.Context) {
 	id := c.Param("id")
 
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
 	for i, journey := range database.Journeys {
 		if journey.ID == id {
 			database.Journeys = append(database.Journeys[:i], database.Journeys[i+1:]...)
@@ -166,6 +196,9 @@ func DeleteJourney(c *gin.Context) {
 func BookJourney(c *gin.Context) {
 	id := c.Param("id")
 	
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
 	for i, journey := range database.Journeys {
 		if journey.ID == id {
 			if journey.SlotsLeft <= 0 {
@@ -188,6 +221,9 @@ func BookJourney(c *gin.Context) {
 
 // GetMerchItems returns all merch items
 func GetMerchItems(c *gin.Context) {
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"items": database.MerchItems,
 		"count": len(database.MerchItems),
@@ -198,6 +234,9 @@ func GetMerchItems(c *gin.Context) {
 func GetMerchItemByID(c *gin.Context) {
 	id := c.Param("id")
 	
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	for _, item := range database.MerchItems {
 		if item.ID == id {
 			c.JSON(http.StatusOK, item)

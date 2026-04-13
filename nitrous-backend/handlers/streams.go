@@ -12,11 +12,31 @@ import (
 )
 
 type Stream struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Category    string `json:"category"`
-	IsLive      bool   `json:"isLive"`
-	ViewerCount int    `json:"viewerCount"`
+	ID            string                `json:"id"`
+	EventID       string                `json:"eventId"`
+	Title         string                `json:"title"`
+	Subtitle      string                `json:"subtitle"`
+	PlaybackURL   string                `json:"playbackUrl,omitempty"`
+	ExternalWatch []ExternalWatchOption `json:"externalWatch,omitempty"`
+	DateStart     string                `json:"date_start,omitempty"`
+	DateEnd       string                `json:"date_end,omitempty"`
+	CountryName   string                `json:"country_name,omitempty"`
+	CircuitShort  string                `json:"circuit_short_name,omitempty"`
+	Category      string                `json:"category"`
+	Location      string                `json:"location"`
+	Quality       string                `json:"quality"`
+	Viewers       int                   `json:"viewers"`
+	IsLive        bool                  `json:"isLive"`
+	CurrentLeader string                `json:"currentLeader"`
+	CurrentSpeed  string                `json:"currentSpeed"`
+	Color         string                `json:"color"`
+	CreatedAt     string                `json:"createdAt"`
+}
+
+type ExternalWatchOption struct {
+	Platform string `json:"platform"`
+	Label    string `json:"label"`
+	URL      string `json:"url"`
 }
 
 type TelemetryPayload struct {
@@ -37,11 +57,8 @@ type Hub struct {
 }
 
 var (
-	streams = []Stream{
-		{ID: "stream-1", Title: "Daytona 500 — Main Feed", Category: "motorsport", IsLive: true, ViewerCount: 12042},
-		{ID: "stream-2", Title: "Dakar Rally — Stage Cam", Category: "offroad", IsLive: true, ViewerCount: 5421},
-		{ID: "stream-3", Title: "Sky Racing Cockpit View", Category: "air", IsLive: false, ViewerCount: 0},
-	}
+	streamsMu sync.RWMutex
+	streams   = []Stream{}
 
 	upgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,
@@ -66,17 +83,23 @@ func ensureHubRunning() {
 	})
 }
 
-// GetStreams returns all stream feeds.
+// GetStreams returns all stream feeds
 func GetStreams(c *gin.Context) {
+	streamsMu.RLock()
+	defer streamsMu.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"streams": streams,
 		"count":   len(streams),
 	})
 }
 
-// GetStreamByID returns one stream feed.
+// GetStreamByID returns one stream feed
 func GetStreamByID(c *gin.Context) {
 	id := c.Param("id")
+
+	streamsMu.RLock()
+	defer streamsMu.RUnlock()
 
 	for _, stream := range streams {
 		if stream.ID == id {
@@ -88,7 +111,7 @@ func GetStreamByID(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
 }
 
-// CreateStream creates a new stream feed (admin only).
+// CreateStream creates a new stream feed (admin only)
 func CreateStream(c *gin.Context) {
 	var stream Stream
 
@@ -97,11 +120,14 @@ func CreateStream(c *gin.Context) {
 		return
 	}
 
+	streamsMu.Lock()
+	defer streamsMu.Unlock()
+
 	streams = append(streams, stream)
 	c.JSON(http.StatusCreated, stream)
 }
 
-// UpdateStream updates an existing stream feed (admin only).
+// UpdateStream updates an existing stream feed (admin only)
 func UpdateStream(c *gin.Context) {
 	id := c.Param("id")
 
@@ -110,6 +136,9 @@ func UpdateStream(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	streamsMu.Lock()
+	defer streamsMu.Unlock()
 
 	for i, stream := range streams {
 		if stream.ID == id {
@@ -123,9 +152,12 @@ func UpdateStream(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
 }
 
-// DeleteStream deletes a stream feed (admin only).
+// DeleteStream deletes a stream feed (admin only)
 func DeleteStream(c *gin.Context) {
 	id := c.Param("id")
+
+	streamsMu.Lock()
+	defer streamsMu.Unlock()
 
 	for i, stream := range streams {
 		if stream.ID == id {
@@ -138,7 +170,7 @@ func DeleteStream(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
 }
 
-// StreamsWS upgrades the request to websocket and registers the client to telemetry updates.
+// StreamsWS upgrades the request to websocket and registers the client to telemetry updates
 func StreamsWS(c *gin.Context) {
 	ensureHubRunning()
 
@@ -158,7 +190,7 @@ func StreamsWS(c *gin.Context) {
 	}
 }
 
-// RunHub runs the websocket client registration, unregistration, and broadcast loop.
+// RunHub runs the websocket client registration, unregistration, and broadcast loop
 func RunHub() {
 	for {
 		select {
@@ -182,7 +214,7 @@ func RunHub() {
 	}
 }
 
-// BroadcastTelemetry publishes telemetry updates to all connected websocket clients.
+// BroadcastTelemetry publishes telemetry updates to all connected websocket clients
 func BroadcastTelemetry(streamID string, speedKPH int, rpm int, gear int, gForce float64) {
 	ensureHubRunning()
 
@@ -202,9 +234,5 @@ func BroadcastTelemetry(streamID string, speedKPH int, rpm int, gear int, gForce
 		return
 	}
 
-	select {
-	case streamHub.broadcast <- message:
-	default:
-		log.Printf("telemetry message dropped: broadcast channel is full")
-	}
+	streamHub.broadcast <- message
 }

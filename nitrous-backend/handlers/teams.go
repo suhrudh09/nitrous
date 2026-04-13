@@ -12,6 +12,9 @@ import (
 
 // GetTeams returns all teams
 func GetTeams(c *gin.Context) {
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"teams": database.Teams,
 		"count": len(database.Teams),
@@ -21,6 +24,9 @@ func GetTeams(c *gin.Context) {
 // GetTeamByID returns a single team by ID
 func GetTeamByID(c *gin.Context) {
 	id := c.Param("id")
+
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
 
 	for _, team := range database.Teams {
 		if team.ID == id {
@@ -46,6 +52,9 @@ func CreateTeam(c *gin.Context) {
 	team.Followers = []string{}
 	team.FollowersCount = 0
 
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
 	database.Teams = append(database.Teams, team)
 	c.JSON(http.StatusCreated, team)
 }
@@ -59,6 +68,9 @@ func UpdateTeam(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
 
 	for i, team := range database.Teams {
 		if team.ID == id {
@@ -78,6 +90,9 @@ func UpdateTeam(c *gin.Context) {
 // DeleteTeam deletes a team (admin only)
 func DeleteTeam(c *gin.Context) {
 	id := c.Param("id")
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
 
 	for i, team := range database.Teams {
 		if team.ID == id {
@@ -99,6 +114,9 @@ func FollowTeam(c *gin.Context) {
 	}
 
 	id := c.Param("id")
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
 
 	for i, team := range database.Teams {
 		if team.ID == id {
@@ -132,6 +150,9 @@ func UnfollowTeam(c *gin.Context) {
 
 	id := c.Param("id")
 	uid := userID.(string)
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
 
 	for i, team := range database.Teams {
 		if team.ID == id {

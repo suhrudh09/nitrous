@@ -19,6 +19,9 @@ func main() {
 	database.InitDB()
 	defer database.CloseDB()
 
+	// Start external provider integrations (Jolpica, OpenF1, TheSportsDB)
+	handlers.StartExternalDataIntegration()
+
 	// Create Gin router
 	r := gin.Default()
 
