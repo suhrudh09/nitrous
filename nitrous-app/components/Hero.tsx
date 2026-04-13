@@ -72,10 +72,10 @@ export default function Hero() {
         </p>
         
         <div className={styles.heroActions}>
-          <button className={styles.btnNitro}>
+          <Link href="/live" className={styles.btnNitro}>
             ▶ &nbsp;Ignite Stream
-          </button>
-          <button className={styles.btnGhost}>Explore Events</button>
+          </Link>
+          <Link href="/events" className={styles.btnGhost}>Explore Events</Link>
         </div>
       </div>
 

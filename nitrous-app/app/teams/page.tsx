@@ -13,8 +13,50 @@ const colorMap: Record<string, string> = {
   gold: '#facc15',
 }
 
+type TeamCard = {
+  id: string
+  name: string
+  category: string
+  country: string
+  founded: string
+  rank: number
+  wins: number
+  points: number
+  following: number
+  drivers: string[]
+  color: string
+  accentColor: string
+}
+
+function normalizeTeams(input: any[]): TeamCard[] {
+  return input.map((team, index) => {
+    const color = typeof team?.color === 'string' ? team.color : 'cyan'
+    const followersCount =
+      typeof team?.following === 'number'
+        ? team.following
+        : typeof team?.followersCount === 'number'
+        ? team.followersCount
+        : 0
+
+    return {
+      id: String(team?.id ?? `team-${index}`),
+      name: typeof team?.name === 'string' && team.name.trim() ? team.name : 'Unknown Team',
+      category: typeof team?.category === 'string' ? team.category : 'MOTORSPORT',
+      country: typeof team?.country === 'string' && team.country.trim() ? team.country : 'Global',
+      founded: typeof team?.founded === 'number' ? String(team.founded) : 'N/A',
+      rank: typeof team?.rank === 'number' ? team.rank : index + 1,
+      wins: typeof team?.wins === 'number' ? team.wins : 0,
+      points: typeof team?.points === 'number' ? team.points : 0,
+      following: followersCount,
+      drivers: Array.isArray(team?.drivers) ? team.drivers.filter((d: unknown) => typeof d === 'string') : [],
+      color,
+      accentColor: typeof team?.accentColor === 'string' ? team.accentColor : colorMap[color] || 'var(--cyan)',
+    }
+  })
+}
+
 export default function TeamsPage() {
-  const [teams, setTeams] = useState<any[]>([])
+  const [teams, setTeams] = useState<TeamCard[]>([])
   const [loading, setLoading] = useState(true)
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -23,7 +65,7 @@ export default function TeamsPage() {
     async function fetchData() {
       try {
         const data = await getTeams()
-        setTeams(data)
+        setTeams(normalizeTeams(data))
       } catch (error) {
         console.error('Failed to fetch teams:', error)
       } finally {
@@ -122,9 +164,13 @@ export default function TeamsPage() {
                 <div className={styles.driversSection}>
                   <div className={styles.driversLabel}>ROSTER</div>
                   <div className={styles.driversList}>
-                    {team.drivers.map((d: string, i: number) => (
-                      <div key={i} className={styles.driverChip}>{d}</div>
-                    ))}
+                    {team.drivers.length > 0 ? (
+                      team.drivers.map((d, i) => (
+                        <div key={i} className={styles.driverChip}>{d}</div>
+                      ))
+                    ) : (
+                      <div className={styles.driverChip}>Roster updating</div>
+                    )}
                   </div>
                 </div>
 

@@ -59,6 +59,16 @@ export interface Stream {
   eventId: string
   title: string
   subtitle: string      // e.g. "Lap 87 / 200"
+  playbackUrl?: string
+  externalWatch?: {
+    platform: string
+    label: string
+    url: string
+  }[]
+  date_start?: string
+  date_end?: string
+  country_name?: string
+  circuit_short_name?: string
   category: string
   location: string
   quality: string       // "4K" | "HD"
