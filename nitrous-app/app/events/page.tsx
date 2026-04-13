@@ -28,6 +28,45 @@ export default function EventsPage() {
   const [liveOnly, setLiveOnly] = useState(false)
   const [remindingId, setRemindingId] = useState<string | null>(null)
 
+  const formatEventDate = (value: string): string => {
+    const dateOnly = value.includes('T') ? value.split('T')[0] : value
+    const parsed = new Date(`${dateOnly}T00:00:00Z`)
+    if (Number.isNaN(parsed.getTime())) return value
+
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(parsed)
+  }
+
+  const formatEventTime = (value: string): string => {
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return value
+
+    const offsetMatch = value.match(/([+-])(\d{2}):(\d{2})$/)
+    const offsetMinutes = offsetMatch
+      ? (offsetMatch[1] === '-' ? -1 : 1) * (Number(offsetMatch[2]) * 60 + Number(offsetMatch[3]))
+      : 0
+
+    const adjusted = new Date(parsed.getTime() + offsetMinutes * 60_000)
+    const timePart = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'UTC',
+    }).format(adjusted)
+
+    if (!offsetMatch) return timePart
+
+    const sign = offsetMatch[1]
+    const hours = offsetMatch[2]
+    const minutes = offsetMatch[3]
+
+    return `${timePart} (UTC${sign}${hours}${minutes === '00' ? '' : `:${minutes}`})`
+  }
+
   useEffect(() => {
     async function fetchData() {
       try {
@@ -135,11 +174,13 @@ export default function EventsPage() {
               <div className={styles.cardBottom}>
                 <div className={styles.cardDate}>
                   <span className={styles.cardDateLabel}>DATE</span>
-                  <span className={styles.cardDateVal}>{event.date}</span>
+                  <span className={styles.cardDateVal}>{formatEventDate(event.date)}</span>
                 </div>
                 <div className={styles.cardDate}>
                   <span className={styles.cardDateLabel}>TIME</span>
-                  <span className={`${styles.cardDateVal} ${event.isLive ? styles.cardTimeLive : ''}`}>{event.time}</span>
+                  <span className={`${styles.cardDateVal} ${event.isLive ? styles.cardTimeLive : ''}`}>
+                    {event.time ? formatEventTime(event.time) : 'N/A'}
+                  </span>
                 </div>
                 {event.viewers && (
                   <div className={styles.cardDate}>

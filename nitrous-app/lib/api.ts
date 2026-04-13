@@ -4,6 +4,8 @@ import type {
   Journey,
   MerchItem,
   Stream,
+  OpenF1RecentSession,
+  OpenF1SessionTelemetry,
   Team,
   User,
   AuthResponse,
@@ -128,6 +130,19 @@ export async function getStreams(): Promise<Stream[]> {
 
 export async function getStreamById(id: string): Promise<Stream> {
   return fetchAPI<Stream>(`/streams/${id}`)
+}
+
+export async function getOpenF1RecentSessions(limit = 8): Promise<OpenF1RecentSession[]> {
+  const data = await fetchAPI<{ sessions: OpenF1RecentSession[]; count: number }>(
+    `/streams/openf1/sessions?limit=${limit}`
+  )
+  return data.sessions ?? []
+}
+
+export async function getOpenF1SessionTelemetry(
+  sessionKey: number
+): Promise<OpenF1SessionTelemetry> {
+  return fetchAPI<OpenF1SessionTelemetry>(`/streams/openf1/sessions/${sessionKey}/telemetry`)
 }
 
 // ── Teams ─────────────────────────────────────────────────────────────────────

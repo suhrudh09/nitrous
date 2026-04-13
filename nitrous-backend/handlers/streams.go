@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -92,6 +93,52 @@ func GetStreams(c *gin.Context) {
 		"streams": streams,
 		"count":   len(streams),
 	})
+}
+
+// GetOpenF1RecentSessions returns recent OpenF1 race sessions.
+func GetOpenF1RecentSessions(c *gin.Context) {
+	limit := 8
+	if raw := c.Query("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			limit = v
+		}
+	}
+
+	year := time.Now().Year()
+	if raw := c.Query("year"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			year = v
+		}
+	}
+
+	sessions, err := GetOpenF1RecentRaceSessions(limit, year)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch OpenF1 sessions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessions": sessions,
+		"count":    len(sessions),
+	})
+}
+
+// GetOpenF1SessionTelemetry returns telemetry snapshot for a specific OpenF1 session.
+func GetOpenF1SessionTelemetry(c *gin.Context) {
+	rawSessionKey := c.Param("sessionKey")
+	sessionKey, err := strconv.Atoi(rawSessionKey)
+	if err != nil || sessionKey <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid session key"})
+		return
+	}
+
+	telemetry, err := FetchOpenF1SessionTelemetry(sessionKey)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch OpenF1 telemetry"})
+		return
+	}
+
+	c.JSON(http.StatusOK, telemetry)
 }
 
 // GetStreamByID returns one stream feed

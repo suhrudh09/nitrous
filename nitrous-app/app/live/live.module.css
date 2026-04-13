@@ -575,7 +575,28 @@
   border-bottom: 1px solid var(--border);
 }
 
+.recentRaceButton {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.recentRaceButton:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.recentRaceButtonActive {
+  background: rgba(0, 229, 255, 0.08);
+}
+
 .upcomingItem:last-child { border-bottom: none; }
+
+.recentRaceButton:last-child { border-bottom: none; }
 
 .upcomingTime {
   font-family: var(--font-mono);
@@ -595,6 +616,59 @@
 .upcomingCat {
   font-size: 11px;
   color: var(--muted);
+}
+
+.recentTelemetryPanel {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.recentTelemetryTitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--cyan);
+  margin-bottom: 10px;
+}
+
+.recentTelemetryLoading,
+.recentTelemetryError {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.recentTelemetryError {
+  color: #ff8f8f;
+}
+
+.recentTelemetryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.recentTelemetryMetric {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recentTelemetryMetric span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+}
+
+.recentTelemetryMetric strong {
+  font-size: 12px;
+  color: var(--text-bright);
 }
 
 @media (max-width: 900px) {

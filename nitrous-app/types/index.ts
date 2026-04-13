@@ -89,6 +89,25 @@ export interface StreamTelemetry {
   subtitle: string
 }
 
+export interface OpenF1RecentSession {
+  session_key: number
+  session_name: string
+  date_start: string
+  date_end: string
+  country_name: string
+  circuit_short_name: string
+}
+
+export interface OpenF1SessionTelemetry {
+  session_key: number
+  current_leader: string
+  speed_kph: number
+  rpm: number
+  gear: number
+  g_force: number
+  captured_at: string
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 export interface Team {
