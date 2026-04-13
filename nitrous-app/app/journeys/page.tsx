@@ -37,7 +37,7 @@ export default function JourneysPage() {
   async function handleBook(journeyId: string) {
     const token = localStorage.getItem('nitrous_token')
     if (!token) {
-      window.location.href = '/login'
+      globalThis.location.href = '/login'
       return
     }
     setBooking(journeyId)
@@ -90,8 +90,8 @@ export default function JourneysPage() {
         {/* Hero Header */}
         <div className={styles.pageHero}>
           <div className={styles.heroLines}>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className={styles.heroLine}></div>
+            {[...new Array(5)].map((_, i) => (
+              <div key={`line-${i}`} className={styles.heroLine}></div>
             ))}
           </div>
           <div className={styles.heroContent}>

@@ -122,7 +122,7 @@ export default function TeamsPage() {
                 <div className={styles.driversSection}>
                   <div className={styles.driversLabel}>ROSTER</div>
                   <div className={styles.driversList}>
-                    {team.drivers.map((d: string, i: number) => (
+                    {team.drivers.map((d: string, i:number) => (
                       <div key={i} className={styles.driverChip}>{d}</div>
                     ))}
                   </div>

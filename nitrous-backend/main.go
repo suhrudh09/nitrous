@@ -12,17 +12,16 @@ import (
 )
 
 func main() {
-	// Load environment variables
 	config.LoadConfig()
 
-	// Initialize database
 	database.InitDB()
 	defer database.CloseDB()
 
-	// Create Gin router
+	go handlers.RunHub()
+	go handlers.SimulateTelemetry() // swap for handlers.PollOpenF1() once live data is wired
+
 	r := gin.Default()
 
-	// CORS configuration
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000", "https://nitrous.vercel.app"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -31,101 +30,76 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "message": "Nitrous API is running"})
 	})
 
-	// API routes
+	r.GET("/ws/streams", handlers.StreamsWS)
+
 	api := r.Group("/api")
 	{
-		// Events
 		events := api.Group("/events")
 		{
 			events.GET("", handlers.GetEvents)
 			events.GET("/live", handlers.GetLiveEvents)
 			events.GET("/:id", handlers.GetEventByID)
-			events.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateEvent)
-			events.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateEvent)
-			events.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteEvent)
+			events.POST("/:id/remind", middleware.AuthMiddleware(), handlers.SetReminder)
+			events.DELETE("/:id/remind", middleware.AuthMiddleware(), handlers.DeleteReminder)
+			events.POST("", middleware.AuthMiddleware(), handlers.CreateEvent)
+			events.PUT("/:id", middleware.AuthMiddleware(), handlers.UpdateEvent)
+			events.DELETE("/:id", middleware.AuthMiddleware(), handlers.DeleteEvent)
 		}
 
-		// Categories
+		streams := api.Group("/streams")
+		{
+			streams.GET("", handlers.GetStreams)
+			streams.GET("/:id", handlers.GetStreamByID)
+		}
+
 		categories := api.Group("/categories")
 		{
 			categories.GET("", handlers.GetCategories)
 			categories.GET("/:slug", handlers.GetCategoryBySlug)
-			categories.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateCategory)
-			categories.PUT("/:slug", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateCategory)
-			categories.DELETE("/:slug", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteCategory)
 		}
 
-		// Journeys
 		journeys := api.Group("/journeys")
 		{
 			journeys.GET("", handlers.GetJourneys)
 			journeys.GET("/:id", handlers.GetJourneyByID)
-			journeys.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateJourney)
-			journeys.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateJourney)
-			journeys.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteJourney)
 			journeys.POST("/:id/book", middleware.AuthMiddleware(), handlers.BookJourney)
 		}
 
-		// Merch
 		merch := api.Group("/merch")
 		{
 			merch.GET("", handlers.GetMerchItems)
 			merch.GET("/:id", handlers.GetMerchItemByID)
 		}
 
-		// Teams
-		teams := api.Group("/teams")
-		{
-			teams.GET("", handlers.GetTeams)
-			teams.GET("/:id", handlers.GetTeamByID)
-			teams.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateTeam)
-			teams.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateTeam)
-			teams.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteTeam)
-			teams.POST("/:id/follow", middleware.AuthMiddleware(), handlers.FollowTeam)
-			teams.POST("/:id/unfollow", middleware.AuthMiddleware(), handlers.UnfollowTeam)
-		}
-
-		// Streams
-		streams := api.Group("/streams")
-		{
-			streams.GET("", handlers.GetStreams)
-			streams.GET("/:id", handlers.GetStreamByID)
-			streams.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateStream)
-			streams.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateStream)
-			streams.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteStream)
-			streams.GET("/ws", handlers.StreamsWS)
-		}
-
-		// Reminders
-		reminders := api.Group("/reminders")
-		{
-			reminders.GET("", middleware.AuthMiddleware(), handlers.GetMyReminders)
-			reminders.POST("", middleware.AuthMiddleware(), handlers.SetReminder)
-			reminders.DELETE("/:id", middleware.AuthMiddleware(), handlers.DeleteReminder)
-		}
-
-		// Orders
 		orders := api.Group("/orders")
+		orders.Use(middleware.AuthMiddleware())
 		{
-			orders.GET("", middleware.AuthMiddleware(), handlers.GetMyOrders)
-			orders.POST("", middleware.AuthMiddleware(), handlers.CreateOrder)
-			orders.GET("/:id", middleware.AuthMiddleware(), handlers.GetOrderByID)
+			orders.POST("", handlers.CreateOrder)
+			orders.GET("", handlers.GetMyOrders)
+			orders.GET("/:id", handlers.GetOrderByID)
 		}
 
-		// Auth
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", handlers.Register)
 			auth.POST("/login", handlers.Login)
 			auth.GET("/me", middleware.AuthMiddleware(), handlers.GetCurrentUser)
+			auth.GET("/reminders", middleware.AuthMiddleware(), handlers.GetMyReminders)
+		}
+
+		teams := api.Group("/teams")
+		{
+			teams.GET("", handlers.GetTeams)
+			teams.GET("/:id", handlers.GetTeamByID)
+			teams.POST("/:id/follow", middleware.AuthMiddleware(), handlers.FollowTeam)
+			teams.DELETE("/:id/follow", middleware.AuthMiddleware(), handlers.UnfollowTeam)
 		}
 	}
 
-	log.Println("🚀 Nitrous API server starting on :8080")
-	r.Run(":8080")
+	log.Println("🚀 Nitrous API server starting on :" + config.AppConfig.Port)
+	r.Run(":" + config.AppConfig.Port)
 }

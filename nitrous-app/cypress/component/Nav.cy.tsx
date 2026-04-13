@@ -33,7 +33,7 @@ describe('Nav Component', () => {
     cy.contains('4 Events Live').should('be.visible')
   })
 
-  it('renders the Sign In link', () => {
-    cy.contains('a', 'Sign In').should('be.visible')
+  it('renders the Sign In button', () => {
+    cy.get('button').contains('Sign In').should('be.visible')
   })
 })

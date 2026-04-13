@@ -3,13 +3,17 @@ import Link from 'next/link'
 import styles from './Hero.module.css'
 
 const heroNavCards = [
-  { label: 'ACCESS\nGARAGE', icon: '🚗', href: '/garage', color: 'grey', progress: 60 },
-  { label: 'ACCESS\nEVENT PASSES', icon: '🎫', href: '/passes', color: 'red', progress: 40 },
-  { label: 'ACCESS\nLIVE STREAMS', icon: '📺', href: '/live', color: 'cyan', progress: 75 },
-  { label: 'TEAMS', icon: '🏆', href: '/teams', color: 'orange', progress: 55 },
-  { label: 'JOURNEYS', icon: '🌍', href: '/journeys', color: 'blue', progress: 85 },
-  { label: 'MERCH', icon: '👕', href: '/merch', color: 'gold', progress: 45 },
+  { id: 'garage', label: 'ACCESS\nGARAGE', icon: '🚗', href: '/garage', color: 'grey', progress: 60 },
+  { id: 'passes', label: 'ACCESS\nEVENT PASSES', icon: '🎫', href: '/passes', color: 'red', progress: 40 },
+  { id: 'streams', label: 'ACCESS\nLIVE STREAMS', icon: '📺', href: '/live', color: 'cyan', progress: 75 },
+  { id: 'teams', label: 'TEAMS', icon: '🏆', href: '/teams', color: 'orange', progress: 55 },
+  { id: 'journeys', label: 'JOURNEYS', icon: '🌍', href: '/journeys', color: 'blue', progress: 85 },
+  { id: 'merch', label: 'MERCH', icon: '👕', href: '/merch', color: 'gold', progress: 45 },
 ]
+
+const getCardColorClass = (color: string): string => {
+  return color.charAt(0).toUpperCase() + color.slice(1)
+}
 
 export default function Hero() {
   return (
@@ -81,11 +85,11 @@ export default function Hero() {
 
       {/* Hero Nav Rail */}
       <div className={styles.heroNavRail}>
-        {heroNavCards.map((card, i) => (
+        {heroNavCards.map((card) => (
           <Link
-            key={i}
+            key={card.id}
             href={card.href}
-            className={`${styles.hnrCard} ${styles[`hnrCard${card.color.charAt(0).toUpperCase() + card.color.slice(1)}`]}`}
+            className={`${styles.hnrCard} ${styles[`hnrCard${getCardColorClass(card.color)}`]}`}
           >
             <div className={styles.hnrIcon}>{card.icon}</div>
             <div className={styles.hnrLabel}>{card.label}</div>

@@ -4,7 +4,7 @@ import { getEvents, getCategories, getJourneys, getMerchItems } from '@/lib/api'
 
 export default async function Home() {
   // Fetch all data in parallel on the server
-  const [events, categories, journeys, merchItems] = await Promise.all([
+  await Promise.all([
     getEvents().catch(() => []),
     getCategories().catch(() => []),
     getJourneys().catch(() => []),

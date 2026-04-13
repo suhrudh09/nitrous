@@ -2,7 +2,8 @@ package models
 
 import "time"
 
-// Event represents a racing event
+// ── Event ─────────────────────────────────────────────────────────────────────
+
 type Event struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
@@ -15,7 +16,8 @@ type Event struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
-// Category represents an event category
+// ── Category ──────────────────────────────────────────────────────────────────
+
 type Category struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -26,7 +28,8 @@ type Category struct {
 	Color       string `json:"color"`
 }
 
-// Journey represents an exclusive experience
+// ── Journey ───────────────────────────────────────────────────────────────────
+
 type Journey struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
@@ -39,7 +42,8 @@ type Journey struct {
 	ThumbnailURL string    `json:"thumbnailUrl,omitempty"`
 }
 
-// MerchItem represents a merchandise item
+// ── MerchItem ─────────────────────────────────────────────────────────────────
+
 type MerchItem struct {
 	ID       string  `json:"id"`
 	Name     string  `json:"name"`
@@ -48,77 +52,113 @@ type MerchItem struct {
 	Category string  `json:"category"`
 }
 
-// Team represents a racing team or organization
-type Team struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Country        string    `json:"country,omitempty"`
-	Drivers        []string  `json:"drivers,omitempty"`
-	Followers      []string  `json:"followers,omitempty"`
-	FollowersCount int       `json:"followersCount"`
-	CreatedAt      time.Time `json:"createdAt"`
-}
+// ── User ──────────────────────────────────────────────────────────────────────
 
-// Reminder represents a user's reminder for an event.
-type Reminder struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"userId"`
-	EventID   string    `json:"eventId"`
-	Message   string    `json:"message,omitempty"`
-	RemindAt  time.Time `json:"remindAt"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-// Order represents a merch order placed by a user.
-type Order struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"userId"`
-	MerchItemID string    `json:"merchItemId"`
-	Quantity    int       `json:"quantity"`
-	UnitPrice   float64   `json:"unitPrice"`
-	TotalPrice  float64   `json:"totalPrice"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"createdAt"`
-}
-
-// User represents a platform user
 type User struct {
 	ID           string    `json:"id"`
 	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"` // Never send password hash to frontend
-	Role         string    `json:"role"`
+	PasswordHash string    `json:"-"` // never serialized to frontend
 	Name         string    `json:"name"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
-// LoginRequest for authentication
+// ── Auth requests ─────────────────────────────────────────────────────────────
+
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	Email    string `json:"email"    binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
-// RegisterRequest for new users
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	Email    string `json:"email"    binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
-	Name     string `json:"name" binding:"required"`
+	Name     string `json:"name"     binding:"required"`
 }
 
-// BookingRequest for journey bookings
 type BookingRequest struct {
 	JourneyID string `json:"journeyId" binding:"required"`
-	UserID    string `json:"userId" binding:"required"`
+	UserID    string `json:"userId"    binding:"required"`
 }
 
-// SetReminderRequest for creating a reminder.
-type SetReminderRequest struct {
-	EventID  string    `json:"eventId" binding:"required"`
-	Message  string    `json:"message"`
-	RemindAt time.Time `json:"remindAt" binding:"required"`
+// ── Team ──────────────────────────────────────────────────────────────────────
+
+type Team struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"` // e.g. "MOTORSPORT · F1"
+	Country   string    `json:"country"`
+	Founded   int       `json:"founded"`
+	Rank      int       `json:"rank"`
+	Wins      int       `json:"wins"`
+	Points    int       `json:"points"`
+	Following int       `json:"following"`
+	Drivers   []string  `json:"drivers"`
+	Color     string    `json:"color"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
-// CreateOrderRequest for creating merch orders.
+type TeamFollow struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	TeamID    string    `json:"teamId"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// ── Stream ────────────────────────────────────────────────────────────────────
+
+type Stream struct {
+	ID            string    `json:"id"`
+	EventID       string    `json:"eventId"`
+	Title         string    `json:"title"`
+	Subtitle      string    `json:"subtitle"` // e.g. "Lap 87 / 200"
+	Category      string    `json:"category"`
+	Location      string    `json:"location"`
+	Quality       string    `json:"quality"` // "4K" | "HD"
+	Viewers       int       `json:"viewers"`
+	IsLive        bool      `json:"isLive"`
+	CurrentLeader string    `json:"currentLeader"`
+	CurrentSpeed  string    `json:"currentSpeed"`
+	Color         string    `json:"color"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+// StreamTelemetry is broadcast over WebSocket to update live data
+type StreamTelemetry struct {
+	StreamID      string `json:"streamId"`
+	Viewers       int    `json:"viewers"`
+	CurrentLeader string `json:"currentLeader"`
+	CurrentSpeed  string `json:"currentSpeed"`
+	Subtitle      string `json:"subtitle"`
+}
+
+// ── Reminder ──────────────────────────────────────────────────────────────────
+
+type Reminder struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	EventID   string    `json:"eventId"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// ── Order ─────────────────────────────────────────────────────────────────────
+
+type OrderItem struct {
+	MerchID  string  `json:"merchId"`
+	Name     string  `json:"name"`
+	Price    float64 `json:"price"`
+	Quantity int     `json:"quantity"`
+	Size     string  `json:"size,omitempty"`
+}
+
+type Order struct {
+	ID        string      `json:"id"`
+	UserID    string      `json:"userId"`
+	Items     []OrderItem `json:"items"`
+	Total     float64     `json:"total"`
+	Status    string      `json:"status"` // "pending" | "confirmed" | "shipped"
+	CreatedAt time.Time   `json:"createdAt"`
+}
+
 type CreateOrderRequest struct {
-	MerchItemID string `json:"merchItemId" binding:"required"`
-	Quantity    int    `json:"quantity" binding:"required,min=1"`
+	Items []OrderItem `json:"items" binding:"required,min=1"`
 }

@@ -59,7 +59,7 @@ export default function MerchPage() {
   async function handleCheckout() {
     const token = localStorage.getItem('nitrous_token')
     if (!token) {
-      window.location.href = '/login'
+      globalThis.location.href = '/login'
       return
     }
     if (cart.length === 0) return

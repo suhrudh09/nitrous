@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"nitrous-backend/database"
+	"nitrous-backend/models"
+	"strconv"
 	"sync"
 	"time"
 
@@ -11,200 +14,116 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Stream struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Category    string `json:"category"`
-	IsLive      bool   `json:"isLive"`
-	ViewerCount int    `json:"viewerCount"`
+// ── REST ──────────────────────────────────────────────────────────────────────
+
+func GetStreams(c *gin.Context) {
+	all := database.GetStreams()
+	var live []models.Stream
+	for _, s := range all {
+		if s.IsLive {
+			live = append(live, s)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"streams": live, "count": len(live)})
 }
 
-type TelemetryPayload struct {
-	Type      string    `json:"type"`
-	StreamID  string    `json:"streamId"`
-	SpeedKPH  int       `json:"speedKph"`
-	RPM       int       `json:"rpm"`
-	Gear      int       `json:"gear"`
-	GForce    float64   `json:"gForce"`
-	Timestamp time.Time `json:"timestamp"`
+func GetStreamByID(c *gin.Context) {
+	s, found := database.FindStreamByID(c.Param("id"))
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
+		return
+	}
+	c.JSON(http.StatusOK, s)
+}
+
+// ── WebSocket hub ─────────────────────────────────────────────────────────────
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		return origin == "http://localhost:3000" || origin == "https://nitrous.vercel.app"
+	},
 }
 
 type Hub struct {
-	clients    map[*websocket.Conn]bool
-	register   chan *websocket.Conn
-	unregister chan *websocket.Conn
-	broadcast  chan []byte
+	clients   map[*websocket.Conn]bool
+	broadcast chan []byte
+	mu        sync.Mutex
 }
 
-var (
-	streams = []Stream{
-		{ID: "stream-1", Title: "Daytona 500 — Main Feed", Category: "motorsport", IsLive: true, ViewerCount: 12042},
-		{ID: "stream-2", Title: "Dakar Rally — Stage Cam", Category: "offroad", IsLive: true, ViewerCount: 5421},
-		{ID: "stream-3", Title: "Sky Racing Cockpit View", Category: "air", IsLive: false, ViewerCount: 0},
-	}
-
-	upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
-	}
-
-	hubOnce   sync.Once
-	streamHub = &Hub{
-		clients:    make(map[*websocket.Conn]bool),
-		register:   make(chan *websocket.Conn),
-		unregister: make(chan *websocket.Conn),
-		broadcast:  make(chan []byte, 128),
-	}
-)
-
-func ensureHubRunning() {
-	hubOnce.Do(func() {
-		go RunHub()
-	})
+var streamHub = &Hub{
+	clients:   make(map[*websocket.Conn]bool),
+	broadcast: make(chan []byte, 256),
 }
 
-// GetStreams returns all stream feeds.
-func GetStreams(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"streams": streams,
-		"count":   len(streams),
-	})
-}
-
-// GetStreamByID returns one stream feed.
-func GetStreamByID(c *gin.Context) {
-	id := c.Param("id")
-
-	for _, stream := range streams {
-		if stream.ID == id {
-			c.JSON(http.StatusOK, stream)
-			return
+func RunHub() {
+	for msg := range streamHub.broadcast {
+		streamHub.mu.Lock()
+		for conn := range streamHub.clients {
+			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				conn.Close()
+				delete(streamHub.clients, conn)
+			}
 		}
+		streamHub.mu.Unlock()
 	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
 }
 
-// CreateStream creates a new stream feed (admin only).
-func CreateStream(c *gin.Context) {
-	var stream Stream
-
-	if err := c.ShouldBindJSON(&stream); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	streams = append(streams, stream)
-	c.JSON(http.StatusCreated, stream)
-}
-
-// UpdateStream updates an existing stream feed (admin only).
-func UpdateStream(c *gin.Context) {
-	id := c.Param("id")
-
-	var updated Stream
-	if err := c.ShouldBindJSON(&updated); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	for i, stream := range streams {
-		if stream.ID == id {
-			updated.ID = id
-			streams[i] = updated
-			c.JSON(http.StatusOK, updated)
-			return
-		}
-	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
-}
-
-// DeleteStream deletes a stream feed (admin only).
-func DeleteStream(c *gin.Context) {
-	id := c.Param("id")
-
-	for i, stream := range streams {
-		if stream.ID == id {
-			streams = append(streams[:i], streams[i+1:]...)
-			c.JSON(http.StatusOK, gin.H{"message": "Stream deleted"})
-			return
-		}
-	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
-}
-
-// StreamsWS upgrades the request to websocket and registers the client to telemetry updates.
 func StreamsWS(c *gin.Context) {
-	ensureHubRunning()
-
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to establish websocket connection"})
+		log.Println("WebSocket upgrade error:", err)
 		return
 	}
+	defer conn.Close()
 
-	streamHub.register <- conn
+	streamHub.mu.Lock()
+	streamHub.clients[conn] = true
+	streamHub.mu.Unlock()
+
+	// Send full stream snapshot on connect
+	snapshot, _ := json.Marshal(database.GetStreams())
+	conn.WriteMessage(websocket.TextMessage, snapshot)
 
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
-			streamHub.unregister <- conn
+			streamHub.mu.Lock()
+			delete(streamHub.clients, conn)
+			streamHub.mu.Unlock()
 			break
 		}
 	}
 }
 
-// RunHub runs the websocket client registration, unregistration, and broadcast loop.
-func RunHub() {
-	for {
-		select {
-		case conn := <-streamHub.register:
-			streamHub.clients[conn] = true
+// BroadcastTelemetry updates the store and fans out to all WS clients.
+func BroadcastTelemetry(t models.StreamTelemetry) {
+	database.UpdateStreamTelemetry(t)
 
-		case conn := <-streamHub.unregister:
-			if _, ok := streamHub.clients[conn]; ok {
-				delete(streamHub.clients, conn)
-				_ = conn.Close()
-			}
-
-		case message := <-streamHub.broadcast:
-			for conn := range streamHub.clients {
-				if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
-					delete(streamHub.clients, conn)
-					_ = conn.Close()
-				}
-			}
-		}
-	}
-}
-
-// BroadcastTelemetry publishes telemetry updates to all connected websocket clients.
-func BroadcastTelemetry(streamID string, speedKPH int, rpm int, gear int, gForce float64) {
-	ensureHubRunning()
-
-	payload := TelemetryPayload{
-		Type:      "telemetry",
-		StreamID:  streamID,
-		SpeedKPH:  speedKPH,
-		RPM:       rpm,
-		Gear:      gear,
-		GForce:    gForce,
-		Timestamp: time.Now().UTC(),
-	}
-
-	message, err := json.Marshal(payload)
+	payload, err := json.Marshal(t)
 	if err != nil {
-		log.Printf("failed to marshal telemetry payload: %v", err)
 		return
 	}
+	streamHub.broadcast <- payload
+}
 
-	select {
-	case streamHub.broadcast <- message:
-	default:
-		log.Printf("telemetry message dropped: broadcast channel is full")
+// SimulateTelemetry is a dev fallback — replaced by PollOpenF1 when live.
+func SimulateTelemetry() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	lap := 87
+	for range ticker.C {
+		s, ok := database.FirstStream()
+		if !ok {
+			continue
+		}
+		lap++
+		BroadcastTelemetry(models.StreamTelemetry{
+			StreamID:      s.ID,
+			Viewers:       s.Viewers + 100,
+			CurrentLeader: s.CurrentLeader,
+			CurrentSpeed:  s.CurrentSpeed,
+			Subtitle:      "Lap " + strconv.Itoa(lap) + " / 200",
+		})
 	}
 }

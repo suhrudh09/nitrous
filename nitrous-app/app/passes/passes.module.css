@@ -1,0 +1,436 @@
+.page {
+  min-height: 100vh;
+  padding-top: 68px;
+  background: var(--void);
+}
+
+/* ── Hero ───────────────────────────────────────────────── */
+.pageHero {
+  position: relative;
+  padding: 60px 48px 40px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 40px;
+}
+
+.heroLines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.heroLine {
+  position: absolute;
+  height: 1px;
+  left: 0;
+  right: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,42,42,0.07), transparent);
+}
+
+.heroLine:nth-child(1) { top: 20%; }
+.heroLine:nth-child(2) { top: 40%; }
+.heroLine:nth-child(3) { top: 60%; }
+.heroLine:nth-child(4) { top: 80%; }
+.heroLine:nth-child(5) { top: 95%; }
+
+.heroContent { position: relative; z-index: 1; }
+
+.headerTag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+
+.pageTitle {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 7vw, 80px);
+  font-weight: 800;
+  color: #fff;
+  line-height: 0.95;
+  letter-spacing: -1px;
+}
+
+.titleAccent {
+  color: var(--red);
+  text-shadow: 0 0 30px rgba(255,42,42,0.3);
+}
+
+.pageSubtitle {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--muted);
+  max-width: 420px;
+  line-height: 1.7;
+}
+
+.heroStats {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 32px;
+  align-items: flex-end;
+  padding-bottom: 4px;
+}
+
+.hStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.hStatN {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--cyan);
+}
+
+.hStatL {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2px;
+}
+
+/* ── Filters ────────────────────────────────────────────── */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 48px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.filterGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filterGroupLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-right: 4px;
+}
+
+.filterBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  padding: 6px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filterBtn:hover {
+  border-color: var(--border-bright);
+  color: var(--text);
+}
+
+.filterBtnActive {
+  background: var(--cyan-glow-sm);
+  border-color: var(--border-bright);
+  color: var(--cyan);
+}
+
+.countTxt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-left: auto;
+}
+
+/* ── Pass Grid ──────────────────────────────────────────── */
+.passGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.passCard {
+  position: relative;
+  background: var(--card);
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: background 0.2s;
+  overflow: hidden;
+}
+
+.passCard:hover {
+  background: var(--card-hover);
+}
+
+.cardAccentBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.urgencyBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  padding: 4px 10px;
+  border: 1px solid;
+  border-radius: 2px;
+  align-self: flex-start;
+}
+
+.urgencyDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 5px var(--red);
+  animation: blink 1.4s infinite;
+}
+
+.cardTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tierBadge {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  border: 1px solid;
+  padding: 4px 12px;
+  border-radius: 3px;
+}
+
+.catChip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 1.5px;
+}
+
+.cardEvent {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-bright);
+  line-height: 1.3;
+}
+
+.cardLocation,
+.cardDate {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Perks */
+.perksSection {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.perksLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 2.5px;
+  margin-bottom: 10px;
+}
+
+.perksList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.perkItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.perkDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Availability */
+.availSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.availTop {
+  display: flex;
+  justify-content: space-between;
+}
+
+.availLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 1.5px;
+}
+
+.availLabelUrgent {
+  color: var(--red);
+}
+
+.availBar {
+  width: 100%;
+  height: 3px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.availFill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s;
+}
+
+/* Bottom CTA */
+.cardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  margin-top: auto;
+}
+
+.priceBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.priceFrom {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 2px;
+}
+
+.priceVal {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.purchaseBtn {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 11px 16px;
+  border: 1px solid;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.purchaseBtn:hover:not(:disabled) {
+  filter: brightness(1.2);
+  box-shadow: 0 0 16px rgba(0,229,255,0.2);
+}
+
+.purchaseBtnDone {
+  background: rgba(74,222,128,0.1) !important;
+  border-color: #4ade80 !important;
+  color: #4ade80 !important;
+  cursor: default !important;
+}
+
+/* ── Bottom Banner ──────────────────────────────────────── */
+.bottomBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32px 48px;
+  border-top: 1px solid var(--border);
+  background: var(--deep);
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.bannerContent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bannerTitle {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-bright);
+  letter-spacing: 2px;
+}
+
+.bannerSub {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.bannerBtn {
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  color: var(--cyan);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 14px 28px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.bannerBtn:hover {
+  background: var(--cyan-glow-sm);
+  box-shadow: 0 0 16px var(--cyan-glow);
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .pageHero { grid-template-columns: 1fr; padding: 40px 24px 32px; }
+  .heroStats { justify-content: flex-start; }
+  .filterBar { padding: 16px 24px; gap: 16px; }
+  .passGrid { grid-template-columns: 1fr; }
+  .bottomBanner { padding: 24px; flex-direction: column; align-items: flex-start; }
+}

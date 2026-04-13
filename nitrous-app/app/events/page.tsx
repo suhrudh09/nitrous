@@ -21,22 +21,24 @@ const catIcons: Record<string, string> = {
   air: '🪂',
 }
 
+const getAccentColor = (category: string): string => {
+  const color = catColors[category] || 'cyan'
+  return color.charAt(0).toUpperCase() + color.slice(1)
+}
+
 export default function EventsPage() {
   const [allEvents, setAllEvents] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [liveOnly, setLiveOnly] = useState(false)
   const [remindingId, setRemindingId] = useState<string | null>(null)
 
   useEffect(() => {
-    async function fetchData() {
+    const fetchData = async () => {
       try {
         const events = await getEvents()
         setAllEvents(events)
       } catch (error) {
         console.error('Failed to fetch events:', error)
-      } finally {
-        setLoading(false)
       }
     }
     fetchData()
@@ -45,7 +47,7 @@ export default function EventsPage() {
   const handleSetReminder = async (eventId: string) => {
     const token = localStorage.getItem('authToken')
     if (!token) {
-      window.location.href = '/login'
+      globalThis.location.href = '/login'
       return
     }
 
@@ -53,7 +55,6 @@ export default function EventsPage() {
     try {
       await setReminder(eventId, token)
       console.log('Reminder set for event:', eventId)
-      // Optionally show a success message
     } catch (error) {
       console.error('Failed to set reminder:', error)
     } finally {
@@ -61,7 +62,7 @@ export default function EventsPage() {
     }
   }
 
-  const filtered = allEvents.filter(e => {
+  const filtered = allEvents.filter((e) => {
     if (liveOnly && !e.isLive) return false
     if (filter === 'all') return true
     return e.category === filter
@@ -82,7 +83,7 @@ export default function EventsPage() {
         {/* Filters */}
         <div className={styles.filterBar}>
           <div className={styles.catFilters}>
-            {cats.map(cat => (
+            {cats.map((cat) => (
               <button
                 key={cat}
                 className={`${styles.catBtn} ${filter === cat ? styles.catBtnActive : ''}`}
@@ -104,7 +105,7 @@ export default function EventsPage() {
         {/* Count */}
         <div className={styles.countBar}>
           <span className={styles.countTxt}>
-            {filtered.length} event{filtered.length !== 1 ? 's' : ''}
+            {filtered.length} event{filtered.length === 1 ? '' : 's'}
           </span>
         </div>
 
@@ -113,7 +114,7 @@ export default function EventsPage() {
           {filtered.map((event) => (
             <div key={event.id} className={`${styles.eventCard} ${event.isLive ? styles.eventCardLive : ''}`}>
               {/* Color accent top */}
-              <div className={`${styles.cardAccent} ${styles[`cardAccent${(catColors[event.category] || 'cyan').charAt(0).toUpperCase() + (catColors[event.category] || 'cyan').slice(1)}`]}`}></div>
+              <div className={`${styles.cardAccent} ${styles[`cardAccent${getAccentColor(event.category)}`]}`}></div>
 
               <div className={styles.cardTop}>
                 <div className={styles.cardCat}>

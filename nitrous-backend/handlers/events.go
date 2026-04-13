@@ -10,109 +10,73 @@ import (
 	"github.com/google/uuid"
 )
 
-// GetEvents returns all events
 func GetEvents(c *gin.Context) {
-	category := c.Query("category") // Optional filter by category
-	
-	var filteredEvents []models.Event
-	
-	if category != "" {
-		for _, event := range database.Events {
-			if event.Category == category {
-				filteredEvents = append(filteredEvents, event)
-			}
-		}
-	} else {
-		filteredEvents = database.Events
+	all := database.GetEvents()
+	category := c.Query("category")
+
+	if category == "" {
+		c.JSON(http.StatusOK, gin.H{"events": all, "count": len(all)})
+		return
 	}
-	
-	c.JSON(http.StatusOK, gin.H{
-		"events": filteredEvents,
-		"count":  len(filteredEvents),
-	})
+
+	var filtered []models.Event
+	for _, e := range all {
+		if e.Category == category {
+			filtered = append(filtered, e)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"events": filtered, "count": len(filtered)})
 }
 
-// GetLiveEvents returns only live events
 func GetLiveEvents(c *gin.Context) {
-	var liveEvents []models.Event
-	
-	for _, event := range database.Events {
-		if event.IsLive {
-			liveEvents = append(liveEvents, event)
+	all := database.GetEvents()
+	var live []models.Event
+	for _, e := range all {
+		if e.IsLive {
+			live = append(live, e)
 		}
 	}
-	
-	c.JSON(http.StatusOK, gin.H{
-		"events": liveEvents,
-		"count":  len(liveEvents),
-	})
+	c.JSON(http.StatusOK, gin.H{"events": live, "count": len(live)})
 }
 
-// GetEventByID returns a single event
 func GetEventByID(c *gin.Context) {
-	id := c.Param("id")
-	
-	for _, event := range database.Events {
-		if event.ID == id {
-			c.JSON(http.StatusOK, event)
-			return
-		}
+	event, found := database.FindEventByID(c.Param("id"))
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
 	}
-	
-	c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+	c.JSON(http.StatusOK, event)
 }
 
-// CreateEvent creates a new event (admin only)
 func CreateEvent(c *gin.Context) {
-	var newEvent models.Event
-	
-	if err := c.ShouldBindJSON(&newEvent); err != nil {
+	var e models.Event
+	if err := c.ShouldBindJSON(&e); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
-	newEvent.ID = uuid.New().String()
-	newEvent.CreatedAt = time.Now()
-	
-	database.Events = append(database.Events, newEvent)
-	
-	c.JSON(http.StatusCreated, newEvent)
+	e.ID = uuid.New().String()
+	e.CreatedAt = time.Now()
+	database.AppendEvent(e)
+	c.JSON(http.StatusCreated, e)
 }
 
-// UpdateEvent updates an existing event
 func UpdateEvent(c *gin.Context) {
-	id := c.Param("id")
-	
-	var updatedEvent models.Event
-	if err := c.ShouldBindJSON(&updatedEvent); err != nil {
+	var updated models.Event
+	if err := c.ShouldBindJSON(&updated); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
-	for i, event := range database.Events {
-		if event.ID == id {
-			updatedEvent.ID = id
-			updatedEvent.CreatedAt = event.CreatedAt
-			database.Events[i] = updatedEvent
-			c.JSON(http.StatusOK, updatedEvent)
-			return
-		}
+	if !database.UpdateEvent(c.Param("id"), updated) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
 	}
-	
-	c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+	c.JSON(http.StatusOK, updated)
 }
 
-// DeleteEvent deletes an event
 func DeleteEvent(c *gin.Context) {
-	id := c.Param("id")
-	
-	for i, event := range database.Events {
-		if event.ID == id {
-			database.Events = append(database.Events[:i], database.Events[i+1:]...)
-			c.JSON(http.StatusOK, gin.H{"message": "Event deleted"})
-			return
-		}
+	if !database.DeleteEvent(c.Param("id")) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
 	}
-	
-	c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+	c.JSON(http.StatusOK, gin.H{"message": "Event deleted"})
 }
