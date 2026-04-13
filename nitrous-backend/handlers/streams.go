@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"nitrous-backend/database"
 	"strconv"
 	"sync"
 	"time"
@@ -220,26 +219,19 @@ func DeleteStream(c *gin.Context) {
 
 // StreamsWS upgrades the request to websocket and registers the client to telemetry updates
 func StreamsWS(c *gin.Context) {
+	ensureHubRunning()
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Println("WebSocket upgrade error:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to establish websocket connection"})
 		return
 	}
-	defer conn.Close()
 
-	streamHub.mu.Lock()
-	streamHub.clients[conn] = true
-	streamHub.mu.Unlock()
-
-	// Send full stream snapshot on connect
-	snapshot, _ := json.Marshal(database.GetStreams())
-	conn.WriteMessage(websocket.TextMessage, snapshot)
+	streamHub.register <- conn
 
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
-			streamHub.mu.Lock()
-			delete(streamHub.clients, conn)
-			streamHub.mu.Unlock()
+			streamHub.unregister <- conn
 			break
 		}
 	}
@@ -285,6 +277,7 @@ func BroadcastTelemetry(streamID string, speedKPH int, rpm int, gear int, gForce
 
 	message, err := json.Marshal(payload)
 	if err != nil {
+		log.Printf("failed to marshal telemetry payload: %v", err)
 		return
 	}
 

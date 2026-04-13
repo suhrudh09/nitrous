@@ -10,8 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// ── Categories ────────────────────────────────────────────────────────────────
-
+// GetCategories returns all categories
 func GetCategories(c *gin.Context) {
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
@@ -22,9 +21,10 @@ func GetCategories(c *gin.Context) {
 	})
 }
 
+// GetCategoryBySlug returns a single category by slug
 func GetCategoryBySlug(c *gin.Context) {
 	slug := c.Param("slug")
-
+	
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
 
@@ -34,7 +34,7 @@ func GetCategoryBySlug(c *gin.Context) {
 			return
 		}
 	}
-
+	
 	c.JSON(http.StatusNotFound, gin.H{"error": "Category not found"})
 }
 
@@ -111,9 +111,10 @@ func GetJourneys(c *gin.Context) {
 	})
 }
 
+// GetJourneyByID returns a single journey
 func GetJourneyByID(c *gin.Context) {
 	id := c.Param("id")
-
+	
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
 
@@ -123,7 +124,7 @@ func GetJourneyByID(c *gin.Context) {
 			return
 		}
 	}
-
+	
 	c.JSON(http.StatusNotFound, gin.H{"error": "Journey not found"})
 }
 
@@ -194,7 +195,7 @@ func DeleteJourney(c *gin.Context) {
 // BookJourney handles journey booking
 func BookJourney(c *gin.Context) {
 	id := c.Param("id")
-
+	
 	database.Mu.Lock()
 	defer database.Mu.Unlock()
 
@@ -204,9 +205,9 @@ func BookJourney(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "No slots available"})
 				return
 			}
-
+			
 			database.Journeys[i].SlotsLeft--
-
+			
 			c.JSON(http.StatusOK, gin.H{
 				"message": "Journey booked successfully",
 				"journey": database.Journeys[i],
@@ -214,12 +215,11 @@ func BookJourney(c *gin.Context) {
 			return
 		}
 	}
-
+	
 	c.JSON(http.StatusNotFound, gin.H{"error": "Journey not found"})
 }
 
-// ── Merch ─────────────────────────────────────────────────────────────────────
-
+// GetMerchItems returns all merch items
 func GetMerchItems(c *gin.Context) {
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
@@ -230,9 +230,10 @@ func GetMerchItems(c *gin.Context) {
 	})
 }
 
+// GetMerchItemByID returns a single merch item
 func GetMerchItemByID(c *gin.Context) {
 	id := c.Param("id")
-
+	
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
 
@@ -242,6 +243,6 @@ func GetMerchItemByID(c *gin.Context) {
 			return
 		}
 	}
-
+	
 	c.JSON(http.StatusNotFound, gin.H{"error": "Merch item not found"})
 }

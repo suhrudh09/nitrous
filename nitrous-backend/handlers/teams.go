@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// GetTeams returns all teams
 func GetTeams(c *gin.Context) {
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
@@ -20,6 +21,7 @@ func GetTeams(c *gin.Context) {
 	})
 }
 
+// GetTeamByID returns a single team by ID
 func GetTeamByID(c *gin.Context) {
 	id := c.Param("id")
 
@@ -105,11 +107,9 @@ func DeleteTeam(c *gin.Context) {
 
 // FollowTeam adds the authenticated user to the team's followers
 func FollowTeam(c *gin.Context) {
-	teamID := c.Param("id")
-	userID := c.GetString("userID")
-
-	if _, found := database.FindTeamByID(teamID); !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
 
@@ -142,11 +142,9 @@ func FollowTeam(c *gin.Context) {
 
 // UnfollowTeam removes the authenticated user from the team's followers
 func UnfollowTeam(c *gin.Context) {
-	teamID := c.Param("id")
-	userID := c.GetString("userID")
-
-	if _, found := database.FindTeamByID(teamID); !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
 
@@ -172,6 +170,14 @@ func UnfollowTeam(c *gin.Context) {
 				return
 			}
 
-	following, _ := database.DecrementFollowing(teamID)
-	c.JSON(http.StatusOK, gin.H{"message": "Unfollowed team", "following": following})
+			// remove follower
+			database.Teams[i].Followers = append(database.Teams[i].Followers[:idx], database.Teams[i].Followers[idx+1:]...)
+			database.Teams[i].FollowersCount = len(database.Teams[i].Followers)
+
+			c.JSON(http.StatusOK, gin.H{"message": "Team unfollowed", "team": database.Teams[i]})
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
 }

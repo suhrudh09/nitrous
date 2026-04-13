@@ -31,7 +31,7 @@ type Config struct {
 var AppConfig Config
 
 func LoadConfig() {
-	// Load .env file — optional in production (env vars take precedence)
+	// Load .env file (optional in production)
 	godotenv.Load()
 
 	AppConfig = Config{
@@ -53,11 +53,6 @@ func LoadConfig() {
 		ExternalRequestTimeout: getEnv("EXTERNAL_REQUEST_TIMEOUT", "10s"),
 		F1YouTubeLiveURL:       getEnv("F1_YOUTUBE_LIVE_URL", "https://www.youtube.com/results?search_query=formula+1+live"),
 		F1TwitchLiveURL:        getEnv("F1_TWITCH_LIVE_URL", "https://www.twitch.tv/directory/category/sports"),
-	}
-
-	// Fail fast — an empty JWT secret lets anyone forge tokens
-	if AppConfig.JWTSecret == "" {
-		log.Fatal("FATAL: JWT_SECRET environment variable must be set")
 	}
 
 	log.Println("✓ Configuration loaded")

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// SetReminder creates a reminder for the authenticated user.
 func SetReminder(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -46,11 +47,12 @@ func SetReminder(c *gin.Context) {
 
 	reminder := models.Reminder{
 		ID:        uuid.New().String(),
-		UserID:    userID,
-		EventID:   eventID,
+		UserID:    userID.(string),
+		EventID:   req.EventID,
+		Message:   req.Message,
+		RemindAt:  req.RemindAt,
 		CreatedAt: time.Now(),
 	}
-	database.AppendReminder(r)
 
 	database.Mu.Lock()
 	database.Reminders = append(database.Reminders, reminder)
@@ -59,9 +61,11 @@ func SetReminder(c *gin.Context) {
 	c.JSON(http.StatusCreated, reminder)
 }
 
+// DeleteReminder deletes one reminder owned by the authenticated user.
 func DeleteReminder(c *gin.Context) {
-	if !database.DeleteReminder(c.GetString("userID"), c.Param("id")) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Reminder not found"})
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
 
@@ -87,6 +91,7 @@ func DeleteReminder(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "Reminder not found"})
 }
 
+// GetMyReminders returns all reminders for the authenticated user.
 func GetMyReminders(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {

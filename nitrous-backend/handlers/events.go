@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// GetEvents returns all events
 func GetEvents(c *gin.Context) {
 	category := c.Query("category") // Optional filter by category
 
@@ -36,6 +37,7 @@ func GetEvents(c *gin.Context) {
 	})
 }
 
+// GetLiveEvents returns only live events
 func GetLiveEvents(c *gin.Context) {
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
@@ -54,6 +56,7 @@ func GetLiveEvents(c *gin.Context) {
 	})
 }
 
+// GetEventByID returns a single event
 func GetEventByID(c *gin.Context) {
 	id := c.Param("id")
 
@@ -90,6 +93,7 @@ func CreateEvent(c *gin.Context) {
 	c.JSON(http.StatusCreated, newEvent)
 }
 
+// UpdateEvent updates an existing event
 func UpdateEvent(c *gin.Context) {
 	id := c.Param("id")
 
