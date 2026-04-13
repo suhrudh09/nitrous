@@ -11,6 +11,8 @@ type Event struct {
 	Time         string    `json:"time,omitempty"`
 	IsLive       bool      `json:"isLive"`
 	Category     string    `json:"category"`
+	Price        string    `json:"price,omitempty"`
+	Viewers      int       `json:"viewers,omitempty"`
 	ThumbnailURL string    `json:"thumbnailUrl,omitempty"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
@@ -52,10 +54,17 @@ type MerchItem struct {
 type Team struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
+	Category       string    `json:"category,omitempty"`
 	Country        string    `json:"country,omitempty"`
+	Founded        int       `json:"founded,omitempty"`
+	Rank           int       `json:"rank,omitempty"`
+	Wins           int       `json:"wins,omitempty"`
+	Points         int       `json:"points,omitempty"`
 	Drivers        []string  `json:"drivers,omitempty"`
 	Followers      []string  `json:"followers,omitempty"`
 	FollowersCount int       `json:"followersCount"`
+	Color          string    `json:"color,omitempty"`
+	AccentColor    string    `json:"accentColor,omitempty"`
 	CreatedAt      time.Time `json:"createdAt"`
 }
 
@@ -71,14 +80,24 @@ type Reminder struct {
 
 // Order represents a merch order placed by a user.
 type Order struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"userId"`
-	MerchItemID string    `json:"merchItemId"`
-	Quantity    int       `json:"quantity"`
-	UnitPrice   float64   `json:"unitPrice"`
-	TotalPrice  float64   `json:"totalPrice"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string      `json:"id"`
+	UserID      string      `json:"userId"`
+	MerchItemID string      `json:"merchItemId"`
+	Quantity    int         `json:"quantity"`
+	UnitPrice   float64     `json:"unitPrice"`
+	TotalPrice  float64     `json:"totalPrice"`
+	Items       []OrderItem `json:"items,omitempty"`
+	Status      string      `json:"status"`
+	CreatedAt   time.Time   `json:"createdAt"`
+}
+
+// OrderItem represents a frontend cart line item.
+type OrderItem struct {
+	MerchID  string  `json:"merchId"`
+	Name     string  `json:"name,omitempty"`
+	Price    float64 `json:"price,omitempty"`
+	Quantity int     `json:"quantity" binding:"required,min=1"`
+	Size     string  `json:"size,omitempty"`
 }
 
 // User represents a platform user
@@ -121,4 +140,9 @@ type SetReminderRequest struct {
 type CreateOrderRequest struct {
 	MerchItemID string `json:"merchItemId" binding:"required"`
 	Quantity    int    `json:"quantity" binding:"required,min=1"`
+}
+
+// CreateOrderItemsRequest supports the frontend cart payload.
+type CreateOrderItemsRequest struct {
+	Items []OrderItem `json:"items" binding:"required,min=1"`
 }

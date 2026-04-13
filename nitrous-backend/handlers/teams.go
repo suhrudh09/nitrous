@@ -10,14 +10,55 @@ import (
 	"github.com/google/uuid"
 )
 
+type teamResponse struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Category       string    `json:"category"`
+	Country        string    `json:"country"`
+	Founded        int       `json:"founded"`
+	Rank           int       `json:"rank"`
+	Wins           int       `json:"wins"`
+	Points         int       `json:"points"`
+	Following      int       `json:"following"`
+	FollowersCount int       `json:"followersCount"`
+	Drivers        []string  `json:"drivers"`
+	Color          string    `json:"color"`
+	AccentColor    string    `json:"accentColor"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+func buildTeamResponse(team models.Team) teamResponse {
+	return teamResponse{
+		ID:             team.ID,
+		Name:           team.Name,
+		Category:       team.Category,
+		Country:        team.Country,
+		Founded:        team.Founded,
+		Rank:           team.Rank,
+		Wins:           team.Wins,
+		Points:         team.Points,
+		Following:      team.FollowersCount,
+		FollowersCount: team.FollowersCount,
+		Drivers:        team.Drivers,
+		Color:          team.Color,
+		AccentColor:    team.AccentColor,
+		CreatedAt:      team.CreatedAt,
+	}
+}
+
 // GetTeams returns all teams
 func GetTeams(c *gin.Context) {
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
 
+	teams := make([]teamResponse, 0, len(database.Teams))
+	for _, team := range database.Teams {
+		teams = append(teams, buildTeamResponse(team))
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"teams": database.Teams,
-		"count": len(database.Teams),
+		"teams": teams,
+		"count": len(teams),
 	})
 }
 
@@ -30,7 +71,7 @@ func GetTeamByID(c *gin.Context) {
 
 	for _, team := range database.Teams {
 		if team.ID == id {
-			c.JSON(http.StatusOK, team)
+			c.JSON(http.StatusOK, buildTeamResponse(team))
 			return
 		}
 	}
@@ -132,7 +173,11 @@ func FollowTeam(c *gin.Context) {
 			database.Teams[i].Followers = append(database.Teams[i].Followers, uid)
 			database.Teams[i].FollowersCount = len(database.Teams[i].Followers)
 
-			c.JSON(http.StatusOK, gin.H{"message": "Team followed", "team": database.Teams[i]})
+			c.JSON(http.StatusOK, gin.H{
+				"message":   "Team followed",
+				"following": database.Teams[i].FollowersCount,
+				"team":      buildTeamResponse(database.Teams[i]),
+			})
 			return
 		}
 	}
@@ -174,7 +219,11 @@ func UnfollowTeam(c *gin.Context) {
 			database.Teams[i].Followers = append(database.Teams[i].Followers[:idx], database.Teams[i].Followers[idx+1:]...)
 			database.Teams[i].FollowersCount = len(database.Teams[i].Followers)
 
-			c.JSON(http.StatusOK, gin.H{"message": "Team unfollowed", "team": database.Teams[i]})
+			c.JSON(http.StatusOK, gin.H{
+				"message":   "Team unfollowed",
+				"following": database.Teams[i].FollowersCount,
+				"team":      buildTeamResponse(database.Teams[i]),
+			})
 			return
 		}
 	}

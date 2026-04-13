@@ -110,3 +110,20 @@ func TestUnfollowTeamEndpoint(t *testing.T) {
 		t.Fatalf("expected 400 for unfollow-when-not-following, got %d", w.Code)
 	}
 }
+
+func TestUnfollowTeamFrontendDeleteRoute(t *testing.T) {
+	setupHandlersTestEnv()
+	database.Teams = []models.Team{{ID: "t1", Name: "Team A", Followers: []string{"user-1"}, FollowersCount: 1}}
+
+	r := gin.New()
+	r.DELETE("/teams/:id/follow", middleware.AuthMiddleware(), UnfollowTeam)
+
+	token := makeToken(t, "user-1")
+	w := performJSONRequest(r, http.MethodDelete, "/teams/t1/follow", nil, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delete follow route, got %d", w.Code)
+	}
+	if database.Teams[0].FollowersCount != 0 {
+		t.Fatalf("expected follower count 0, got %d", database.Teams[0].FollowersCount)
+	}
+}

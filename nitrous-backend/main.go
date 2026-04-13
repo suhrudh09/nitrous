@@ -48,6 +48,8 @@ func main() {
 			events.GET("", handlers.GetEvents)
 			events.GET("/live", handlers.GetLiveEvents)
 			events.GET("/:id", handlers.GetEventByID)
+			events.POST("/:id/remind", middleware.AuthMiddleware(), handlers.SetEventReminderCompat)
+			events.DELETE("/:id/remind", middleware.AuthMiddleware(), handlers.DeleteEventReminderCompat)
 			events.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateEvent)
 			events.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateEvent)
 			events.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteEvent)
@@ -90,6 +92,7 @@ func main() {
 			teams.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateTeam)
 			teams.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteTeam)
 			teams.POST("/:id/follow", middleware.AuthMiddleware(), handlers.FollowTeam)
+			teams.DELETE("/:id/follow", middleware.AuthMiddleware(), handlers.UnfollowTeam)
 			teams.POST("/:id/unfollow", middleware.AuthMiddleware(), handlers.UnfollowTeam)
 		}
 

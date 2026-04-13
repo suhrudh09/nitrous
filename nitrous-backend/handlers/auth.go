@@ -15,12 +15,12 @@ import (
 // Register creates a new user account
 func Register(c *gin.Context) {
 	var req models.RegisterRequest
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	database.Mu.Lock()
 	defer database.Mu.Unlock()
 
@@ -31,14 +31,14 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 		return
 	}
-	
+
 	// Create user
 	newUser := models.User{
 		ID:           uuid.New().String(),
@@ -48,16 +48,16 @@ func Register(c *gin.Context) {
 		Name:         req.Name,
 		CreatedAt:    time.Now(),
 	}
-	
+
 	database.Users = append(database.Users, newUser)
-	
+
 	// Generate JWT token
 	token, err := utils.GenerateJWT(newUser.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
-	
+
 	c.JSON(http.StatusCreated, gin.H{
 		"user":  newUser,
 		"token": token,
@@ -67,12 +67,12 @@ func Register(c *gin.Context) {
 // Login authenticates a user
 func Login(c *gin.Context) {
 	var req models.LoginRequest
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
 
@@ -84,26 +84,26 @@ func Login(c *gin.Context) {
 			break
 		}
 	}
-	
+
 	if foundUser == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
-	
+
 	// Check password
 	err := bcrypt.CompareHashAndPassword([]byte(foundUser.PasswordHash), []byte(req.Password))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
-	
+
 	// Generate JWT token
 	token, err := utils.GenerateJWT(foundUser.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"user":  foundUser,
 		"token": token,
@@ -117,7 +117,7 @@ func GetCurrentUser(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	
+
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
 
@@ -128,6 +128,6 @@ func GetCurrentUser(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 }

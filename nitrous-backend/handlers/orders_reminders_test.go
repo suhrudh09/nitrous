@@ -278,3 +278,68 @@ func TestDeleteReminderEndpoint(t *testing.T) {
 		t.Fatalf("expected 404 for missing reminder, got %d", w.Code)
 	}
 }
+
+func TestCreateOrderFrontendPayload(t *testing.T) {
+	setupHandlersTestEnv()
+	database.MerchItems = []models.MerchItem{
+		{ID: "m1", Name: "Cap", Price: 50},
+		{ID: "m2", Name: "Jacket", Price: 100},
+	}
+
+	r := gin.New()
+	r.POST("/orders", middleware.AuthMiddleware(), CreateOrder)
+
+	token := makeToken(t, "user-1")
+	req := map[string]any{
+		"items": []map[string]any{
+			{"merchId": "m1", "quantity": 2},
+			{"merchId": "m2", "quantity": 1},
+		},
+	}
+
+	w := performJSONRequest(r, http.MethodPost, "/orders", req, token)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for cart payload, got %d", w.Code)
+	}
+
+	var resp struct {
+		Message string        `json:"message"`
+		Order   orderResponse `json:"order"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode compat order response: %v", err)
+	}
+	if resp.Order.Total != 200 {
+		t.Fatalf("expected total 200, got %.2f", resp.Order.Total)
+	}
+	if len(resp.Order.Items) != 2 {
+		t.Fatalf("expected 2 order items, got %d", len(resp.Order.Items))
+	}
+}
+
+func TestEventReminderCompatEndpoints(t *testing.T) {
+	setupHandlersTestEnv()
+	database.Events = []models.Event{sampleEvent("event-1")}
+
+	r := gin.New()
+	r.POST("/events/:id/remind", middleware.AuthMiddleware(), SetEventReminderCompat)
+	r.DELETE("/events/:id/remind", middleware.AuthMiddleware(), DeleteEventReminderCompat)
+
+	token := makeToken(t, "user-1")
+
+	w := performJSONRequest(r, http.MethodPost, "/events/event-1/remind", nil, token)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for compat reminder create, got %d", w.Code)
+	}
+	if len(database.Reminders) != 1 {
+		t.Fatalf("expected 1 reminder, got %d", len(database.Reminders))
+	}
+
+	w = performJSONRequest(r, http.MethodDelete, "/events/event-1/remind", nil, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for compat reminder delete, got %d", w.Code)
+	}
+	if len(database.Reminders) != 0 {
+		t.Fatalf("expected 0 reminders after delete, got %d", len(database.Reminders))
+	}
+}

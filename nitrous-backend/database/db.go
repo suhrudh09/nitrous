@@ -69,7 +69,56 @@ func seedOrders() {
 }
 
 func seedTeams() {
-	Teams = []models.Team{}
+	Teams = []models.Team{
+		{
+			ID:             uuid.New().String(),
+			Name:           "Apex Velocity Racing",
+			Category:       "MOTORSPORT · F1",
+			Country:        "United Kingdom",
+			Founded:        2012,
+			Rank:           1,
+			Wins:           9,
+			Points:         312,
+			Drivers:        []string{"Luca Moretti", "Ethan Vale"},
+			Followers:      []string{},
+			FollowersCount: 12840,
+			Color:          "cyan",
+			AccentColor:    "#22d3ee",
+			CreatedAt:      time.Now(),
+		},
+		{
+			ID:             uuid.New().String(),
+			Name:           "Redline Rally Works",
+			Category:       "OFFROAD · RALLY",
+			Country:        "Spain",
+			Founded:        2008,
+			Rank:           2,
+			Wins:           6,
+			Points:         276,
+			Drivers:        []string{"Sofia Navarro", "Tomas Riedel"},
+			Followers:      []string{},
+			FollowersCount: 9410,
+			Color:          "orange",
+			AccentColor:    "#fb923c",
+			CreatedAt:      time.Now(),
+		},
+		{
+			ID:             uuid.New().String(),
+			Name:           "Hydra Marine GP",
+			Category:       "WATER · OFFSHORE",
+			Country:        "Italy",
+			Founded:        2015,
+			Rank:           3,
+			Wins:           4,
+			Points:         219,
+			Drivers:        []string{"Marco Bellini", "Nina Sorensen"},
+			Followers:      []string{},
+			FollowersCount: 6845,
+			Color:          "blue",
+			AccentColor:    "#60a5fa",
+			CreatedAt:      time.Now(),
+		},
+	}
 }
 
 func CloseDB() {
@@ -85,6 +134,7 @@ func seedEvents() {
 			Date:     time.Now().Add(14 * 24 * time.Hour),
 			IsLive:   false,
 			Category: "water",
+			Price:    "FREE",
 			Time:     "14:00 UTC",
 		},
 		{
@@ -94,6 +144,7 @@ func seedEvents() {
 			Date:     time.Now().Add(20 * 24 * time.Hour),
 			IsLive:   false,
 			Category: "air",
+			Price:    "PREMIUM",
 			Time:     "11:30 UTC",
 		},
 		{
@@ -103,7 +154,28 @@ func seedEvents() {
 			Date:     time.Now().Add(26 * 24 * time.Hour),
 			IsLive:   false,
 			Category: "air",
+			Price:    "LIVE PASS",
 			Time:     "16:00 UTC",
+		},
+		{
+			ID:       uuid.New().String(),
+			Title:    "Grand Prix Night Session",
+			Location: "Marina Bay - Singapore",
+			Date:     time.Now().Add(3 * time.Hour),
+			IsLive:   true,
+			Category: "motorsport",
+			Time:     "LIVE NOW",
+			Viewers:  284000,
+		},
+		{
+			ID:       uuid.New().String(),
+			Title:    "Baja Desert Prologue",
+			Location: "Ensenada - Mexico",
+			Date:     time.Now().Add(90 * time.Minute),
+			IsLive:   true,
+			Category: "offroad",
+			Time:     "LIVE NOW",
+			Viewers:  121000,
 		},
 	}
 }
