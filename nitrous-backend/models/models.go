@@ -71,14 +71,14 @@ type Reminder struct {
 
 // Order represents a merch order placed by a user.
 type Order struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"userId"`
-	MerchItemID string    `json:"merchItemId"`
-	Quantity    int       `json:"quantity"`
-	UnitPrice   float64   `json:"unitPrice"`
-	TotalPrice  float64   `json:"totalPrice"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID           string    `json:"id"`
+	UserID       string    `json:"userId"`
+	MerchItemIDs []string  `json:"merchItemIds"`
+	Quantities   []int     `json:"quantities"`
+	UnitPrices   []float64 `json:"unitPrices"`
+	Total        float64   `json:"total"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // User represents a platform user
@@ -119,6 +119,7 @@ type SetReminderRequest struct {
 
 // CreateOrderRequest for creating merch orders.
 type CreateOrderRequest struct {
-	MerchItemID string `json:"merchItemId" binding:"required"`
-	Quantity    int    `json:"quantity" binding:"required,min=1"`
+	MerchItemIDs []string  `json:"merchItemIds" binding:"required,min=1,dive,required"`
+	Quantities   []int     `json:"quantities" binding:"required,min=1,dive,min=1"`
+	UnitPrices   []float64 `json:"unitPrices" binding:"required,min=1,dive,gt=0"`
 }

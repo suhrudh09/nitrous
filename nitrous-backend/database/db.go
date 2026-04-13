@@ -186,11 +186,11 @@ func seedJourneys() {
 
 func seedMerch() {
 	MerchItems = []models.MerchItem{
-		{ID: uuid.New().String(), Name: "Team Hoodie", Icon: "H", Price: 89, Category: "apparel"},
-		{ID: uuid.New().String(), Name: "NITROUS Cap", Icon: "C", Price: 42, Category: "apparel"},
-		{ID: uuid.New().String(), Name: "Racing Jacket", Icon: "J", Price: 189, Category: "apparel"},
-		{ID: uuid.New().String(), Name: "Pit Watch", Icon: "W", Price: 249, Category: "accessories"},
-		{ID: uuid.New().String(), Name: "Gear Backpack", Icon: "B", Price: 120, Category: "accessories"},
-		{ID: uuid.New().String(), Name: "Drop Keychain", Icon: "K", Price: 28, Category: "collectibles"},
+		{ID: "merch-team-hoodie", Name: "Team Hoodie", Icon: "H", Price: 89, Category: "apparel"},
+		{ID: "merch-nitrous-cap", Name: "NITROUS Cap", Icon: "C", Price: 42, Category: "apparel"},
+		{ID: "merch-racing-jacket", Name: "Racing Jacket", Icon: "J", Price: 189, Category: "apparel"},
+		{ID: "merch-pit-watch", Name: "Pit Watch", Icon: "W", Price: 249, Category: "accessories"},
+		{ID: "merch-gear-backpack", Name: "Gear Backpack", Icon: "B", Price: 120, Category: "accessories"},
+		{ID: "merch-drop-keychain", Name: "Drop Keychain", Icon: "K", Price: 28, Category: "collectibles"},
 	}
 }

@@ -196,11 +196,37 @@ export async function createOrder(
   items: OrderItem[],
   token: string
 ): Promise<{ message: string; order: Order }> {
-  return fetchAPI<{ message: string; order: Order }>('/orders', {
+  const payload = {
+    merchItemIds: items.map((item) => item.merchId),
+    quantities: items.map((item) => item.quantity),
+    unitPrices: items.map((item) => item.price),
+  }
+
+  const response = await fetchAPI<any>('/orders', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify(payload),
   })
+
+  // Backward/forward compatibility: some handlers return raw order, others wrap it.
+  const rawOrder = response?.order ?? response
+  if (!rawOrder || typeof rawOrder.id !== 'string') {
+    throw new Error('Invalid order response from server')
+  }
+
+  const normalizedOrder: Order = {
+    id: rawOrder.id,
+    userId: rawOrder.userId,
+    items: Array.isArray(rawOrder.items) ? rawOrder.items : [],
+    total: typeof rawOrder.total === 'number' ? rawOrder.total : 0,
+    status: rawOrder.status,
+    createdAt: rawOrder.createdAt,
+  }
+
+  return {
+    message: typeof response?.message === 'string' ? response.message : 'Order created',
+    order: normalizedOrder,
+  }
 }
 
 export async function getMyOrders(token: string): Promise<Order[]> {

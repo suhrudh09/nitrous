@@ -72,7 +72,35 @@ export default function MerchPage() {
     } catch {
       localStorage.removeItem(CART_STORAGE_KEY)
     }
-  }, [cart])
+  }, [])
+
+  useEffect(() => {
+    if (products.length === 0) return
+
+    setCart((prev) => {
+      if (prev.length === 0) return prev
+
+      const byId = new Map(products.map((p) => [p.id, p]))
+      const byName = new Map(products.map((p) => [p.name.toLowerCase(), p]))
+
+      const reconciled = prev
+        .map((entry) => {
+          const direct = byId.get(entry.item.id)
+          if (direct) {
+            return { ...entry, item: direct }
+          }
+
+          const fallback = byName.get(entry.item.name.toLowerCase())
+          if (!fallback) return null
+
+          return { ...entry, item: fallback }
+        })
+        .filter((entry): entry is CartEntry => entry !== null)
+
+      persistCart(reconciled)
+      return reconciled
+    })
+  }, [products])
 
   const filtered =
     filter === 'all' ? products : products.filter((p) => p.category === filter)

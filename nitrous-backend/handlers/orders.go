@@ -24,32 +24,52 @@ func CreateOrder(c *gin.Context) {
 		return
 	}
 
-	database.Mu.RLock()
-	var merchItem *models.MerchItem
-
-	for _, item := range database.MerchItems {
-		if item.ID == req.MerchItemID {
-			itemCopy := item
-			merchItem = &itemCopy
-			break
-		}
-	}
-	database.Mu.RUnlock()
-
-	if merchItem == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Merch item not found"})
+	if len(req.MerchItemIDs) != len(req.Quantities) || len(req.MerchItemIDs) != len(req.UnitPrices) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "merchItemIds, quantities, and unitPrices must have matching lengths"})
 		return
 	}
 
+	if len(req.MerchItemIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order must include at least one item"})
+		return
+	}
+
+	database.Mu.RLock()
+	merchByID := make(map[string]models.MerchItem, len(database.MerchItems))
+	for _, item := range database.MerchItems {
+		merchByID[item.ID] = item
+	}
+	database.Mu.RUnlock()
+
+	total := 0.0
+	for i := range req.MerchItemIDs {
+		if _, ok := merchByID[req.MerchItemIDs[i]]; !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Merch item not found"})
+			return
+		}
+
+		if req.Quantities[i] <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "quantity must be greater than 0 for each item"})
+			return
+		}
+
+		if req.UnitPrices[i] <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unitPrice must be greater than 0 for each item"})
+			return
+		}
+
+		total += req.UnitPrices[i] * float64(req.Quantities[i])
+	}
+
 	order := models.Order{
-		ID:          uuid.New().String(),
-		UserID:      userID.(string),
-		MerchItemID: req.MerchItemID,
-		Quantity:    req.Quantity,
-		UnitPrice:   merchItem.Price,
-		TotalPrice:  merchItem.Price * float64(req.Quantity),
-		Status:      "created",
-		CreatedAt:   time.Now(),
+		ID:           uuid.New().String(),
+		UserID:       userID.(string),
+		MerchItemIDs: req.MerchItemIDs,
+		Quantities:   req.Quantities,
+		UnitPrices:   req.UnitPrices,
+		Total:        total,
+		Status:       "pending",
+		CreatedAt:    time.Now(),
 	}
 
 	database.Mu.Lock()

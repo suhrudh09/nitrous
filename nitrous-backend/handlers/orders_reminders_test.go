@@ -20,7 +20,7 @@ func TestCreateOrderEndpoint(t *testing.T) {
 	r := gin.New()
 	r.POST("/orders", middleware.AuthMiddleware(), CreateOrder)
 
-	validReq := map[string]any{"merchItemId": "m1", "quantity": 2}
+	validReq := map[string]any{"merchItemIds": []string{"m1"}, "quantities": []int{2}, "unitPrices": []float64{50}}
 
 	w := performJSONRequest(r, http.MethodPost, "/orders", validReq, "")
 	if w.Code != http.StatusUnauthorized {
@@ -28,13 +28,13 @@ func TestCreateOrderEndpoint(t *testing.T) {
 	}
 
 	token := makeToken(t, "user-1")
-	invalidReq := map[string]any{"merchItemId": "m1", "quantity": 0}
+	invalidReq := map[string]any{"merchItemIds": []string{"m1"}, "quantities": []int{0}, "unitPrices": []float64{50}}
 	w = performJSONRequest(r, http.MethodPost, "/orders", invalidReq, token)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 invalid payload, got %d", w.Code)
 	}
 
-	notFoundReq := map[string]any{"merchItemId": "unknown", "quantity": 1}
+	notFoundReq := map[string]any{"merchItemIds": []string{"unknown"}, "quantities": []int{1}, "unitPrices": []float64{50}}
 	w = performJSONRequest(r, http.MethodPost, "/orders", notFoundReq, token)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 merch not found, got %d", w.Code)
@@ -49,16 +49,16 @@ func TestCreateOrderEndpoint(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &order); err != nil {
 		t.Fatalf("failed to decode order: %v", err)
 	}
-	if order.TotalPrice != 100 {
-		t.Fatalf("expected total price 100, got %.2f", order.TotalPrice)
+	if order.Total != 100 {
+		t.Fatalf("expected total price 100, got %.2f", order.Total)
 	}
 }
 
 func TestGetMyOrdersEndpoint(t *testing.T) {
 	setupHandlersTestEnv()
 	database.Orders = []models.Order{
-		{ID: "o1", UserID: "user-1", MerchItemID: "m1", Quantity: 1, TotalPrice: 10},
-		{ID: "o2", UserID: "user-2", MerchItemID: "m2", Quantity: 1, TotalPrice: 20},
+		{ID: "o1", UserID: "user-1", MerchItemIDs: []string{"m1"}, Quantities: []int{1}, UnitPrices: []float64{10}, Total: 10},
+		{ID: "o2", UserID: "user-2", MerchItemIDs: []string{"m2"}, Quantities: []int{1}, UnitPrices: []float64{20}, Total: 20},
 	}
 
 	r := gin.New()
@@ -90,8 +90,8 @@ func TestGetMyOrdersEndpoint(t *testing.T) {
 func TestGetOrderByIDEndpoint(t *testing.T) {
 	setupHandlersTestEnv()
 	database.Orders = []models.Order{
-		{ID: "o1", UserID: "user-1", MerchItemID: "m1", Quantity: 1, TotalPrice: 10},
-		{ID: "o2", UserID: "user-2", MerchItemID: "m2", Quantity: 1, TotalPrice: 20},
+		{ID: "o1", UserID: "user-1", MerchItemIDs: []string{"m1"}, Quantities: []int{1}, UnitPrices: []float64{10}, Total: 10},
+		{ID: "o2", UserID: "user-2", MerchItemIDs: []string{"m2"}, Quantities: []int{1}, UnitPrices: []float64{20}, Total: 20},
 	}
 
 	r := gin.New()
@@ -122,8 +122,8 @@ func TestGetOrderByIDEndpoint(t *testing.T) {
 func TestCancelOrderEndpoint(t *testing.T) {
 	setupHandlersTestEnv()
 	database.Orders = []models.Order{
-		{ID: "o1", UserID: "user-1", MerchItemID: "m1", Quantity: 1, TotalPrice: 10, Status: "created"},
-		{ID: "o2", UserID: "user-2", MerchItemID: "m2", Quantity: 1, TotalPrice: 20, Status: "created"},
+		{ID: "o1", UserID: "user-1", MerchItemIDs: []string{"m1"}, Quantities: []int{1}, UnitPrices: []float64{10}, Total: 10, Status: "created"},
+		{ID: "o2", UserID: "user-2", MerchItemIDs: []string{"m2"}, Quantities: []int{1}, UnitPrices: []float64{20}, Total: 20, Status: "created"},
 	}
 
 	r := gin.New()
