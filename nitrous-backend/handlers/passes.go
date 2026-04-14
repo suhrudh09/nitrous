@@ -3,7 +3,8 @@ package handlers
 import (
 	"net/http"
 	"nitrous-backend/database"
-	"nitrous-backend/middleware"
+	"nitrous-backend/utils"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,74 +26,47 @@ type Pass struct {
 
 func PurchasePass(c *gin.Context) {
 	passID := c.Param("id")
-	claims := c.MustGet("claims").(*middleware.Claims)
-	userID := claims.UserID
-
-	db := database.GetDB()
-
-	// Begin transaction — check spots and insert purchase atomically
-	tx, err := db.Begin()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	defer tx.Rollback()
 
-	// Lock the row and check spots remaining
-	var spotsLeft int
-	err = tx.QueryRow(
-		`SELECT spots_left FROM passes WHERE id = $1 FOR UPDATE`,
-		passID,
-	).Scan(&spotsLeft)
-	if err != nil {
+	_ = utils.Claims{}
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
+	var foundPass *database.Pass
+	for i := range database.Passes {
+		if database.Passes[i].ID == passID {
+			foundPass = &database.Passes[i]
+			break
+		}
+	}
+	if foundPass == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pass not found"})
 		return
 	}
 
-	if spotsLeft <= 0 {
+	if foundPass.SpotsLeft <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No spots remaining"})
 		return
 	}
 
-	// Check user hasn't already purchased this pass
-	var existing int
-	err = tx.QueryRow(
-		`SELECT COUNT(*) FROM pass_purchases WHERE user_id = $1 AND pass_id = $2`,
-		userID, passID,
-	).Scan(&existing)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-	if existing > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You already have this pass"})
-		return
+	for _, purchase := range database.PassPurchases {
+		if purchase.UserID == userID.(string) && purchase.PassID == passID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "You already have this pass"})
+			return
+		}
 	}
 
-	// Decrement spots
-	_, err = tx.Exec(
-		`UPDATE passes SET spots_left = spots_left - 1 WHERE id = $1`,
-		passID,
-	)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reserve spot"})
-		return
-	}
-
-	// Record the purchase
-	_, err = tx.Exec(
-		`INSERT INTO pass_purchases (user_id, pass_id) VALUES ($1, $2)`,
-		userID, passID,
-	)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record purchase"})
-		return
-	}
-
-	if err = tx.Commit(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to complete purchase"})
-		return
-	}
+	foundPass.SpotsLeft--
+	database.PassPurchases = append(database.PassPurchases, database.PassPurchase{
+		UserID:    userID.(string),
+		PassID:    passID,
+		CreatedAt: time.Now(),
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Pass purchased successfully",
