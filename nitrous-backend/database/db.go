@@ -13,16 +13,39 @@ import (
 // In-memory storage for prototype
 // Replace with actual DB connection for production
 var (
-	Mu         sync.RWMutex
-	Events     []models.Event
-	Categories []models.Category
-	Journeys   []models.Journey
-	MerchItems []models.MerchItem
-	Users      []models.User
-	Teams      []models.Team
-	Reminders  []models.Reminder
-	Orders     []models.Order
+	Mu            sync.RWMutex
+	Events        []models.Event
+	Categories    []models.Category
+	Journeys      []models.Journey
+	Passes        []Pass
+	PassPurchases []PassPurchase
+	MerchItems    []models.MerchItem
+	Users         []models.User
+	Teams         []models.Team
+	Reminders     []models.Reminder
+	Orders        []models.Order
 )
+
+type Pass struct {
+	ID         string
+	Tier       string
+	Event      string
+	Location   string
+	Date       string
+	Category   string
+	Price      float64
+	Perks      []string
+	SpotsLeft  int
+	TotalSpots int
+	Badge      *string
+	TierColor  string
+}
+
+type PassPurchase struct {
+	UserID    string
+	PassID    string
+	CreatedAt time.Time
+}
 
 func InitDB() {
 	log.Println("Initializing in-memory database...")
@@ -33,6 +56,7 @@ func InitDB() {
 	seedCategories()
 	seedJourneys()
 	seedMerch()
+	seedPasses()
 	seedTeams()
 	seedReminders()
 	seedOrders()
@@ -193,4 +217,13 @@ func seedMerch() {
 		{ID: "merch-gear-backpack", Name: "Gear Backpack", Icon: "B", Price: 120, Category: "accessories"},
 		{ID: "merch-drop-keychain", Name: "Drop Keychain", Icon: "K", Price: 28, Category: "collectibles"},
 	}
+}
+
+func seedPasses() {
+	badge := "LIMITED"
+	Passes = []Pass{
+		{ID: "pass-daytona-grandstand", Tier: "GRANDSTAND", Event: "Daytona 500", Location: "Daytona Beach, FL", Date: time.Now().Add(30 * 24 * time.Hour).Format(time.RFC3339), Category: "motorsport", Price: 299, Perks: []string{"Track access", "Pit lane tour"}, SpotsLeft: 4, TotalSpots: 20, Badge: &badge, TierColor: "#ff4d4d"},
+		{ID: "pass-pit-experience", Tier: "PIT ACCESS", Event: "F1 Grand Prix", Location: "Austin, TX", Date: time.Now().Add(45 * 24 * time.Hour).Format(time.RFC3339), Category: "motorsport", Price: 599, Perks: []string{"Pit walk", "Garage access"}, SpotsLeft: 12, TotalSpots: 50, Badge: nil, TierColor: "#60a5fa"},
+	}
+	PassPurchases = []PassPurchase{}
 }
