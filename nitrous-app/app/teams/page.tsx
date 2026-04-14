@@ -76,7 +76,7 @@ export default function TeamsPage() {
   }, [])
 
   const handleFollow = async (teamId: string) => {
-    const token = localStorage.getItem('authToken')
+    const token = localStorage.getItem('nitrous_token')
     if (!token) {
       window.location.href = '/login'
       return

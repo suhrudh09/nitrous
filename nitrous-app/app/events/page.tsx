@@ -103,7 +103,7 @@ export default function EventsPage() {
   }
 
   const handleSetReminder = async (eventId: string) => {
-    const token = localStorage.getItem('authToken')
+    const token = localStorage.getItem('nitrous_token')
     if (!token) {
       window.location.href = '/login'
       return
