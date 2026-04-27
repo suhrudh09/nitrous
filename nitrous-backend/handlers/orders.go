@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
 	"nitrous-backend/database"
 	"nitrous-backend/models"
@@ -72,6 +73,27 @@ func CreateOrder(c *gin.Context) {
 		CreatedAt:    time.Now(),
 	}
 
+	if database.DB != nil {
+		// Insert order
+		_, err := database.DB.Exec(`INSERT INTO orders (id, user_id, total, status, created_at) VALUES ($1,$2,$3,$4,$5)`, order.ID, order.UserID, order.Total, order.Status, order.CreatedAt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Insert items
+		for i, itemID := range req.MerchItemIDs {
+			_, err := database.DB.Exec(`INSERT INTO order_items (order_id, merch_item_id, quantity, unit_price) VALUES ($1,$2,$3,$4)`, order.ID, itemID, req.Quantities[i], req.UnitPrices[i])
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+
+		c.JSON(http.StatusCreated, order)
+		return
+	}
+
 	database.Mu.Lock()
 	database.Orders = append(database.Orders, order)
 	database.Mu.Unlock()
@@ -87,6 +109,45 @@ func GetMyOrders(c *gin.Context) {
 		return
 	}
 
+	if database.DB != nil {
+		rows, err := database.DB.Query(`SELECT id, user_id::text, total::float8, status, created_at FROM orders WHERE user_id=$1 ORDER BY created_at DESC`, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		orders := make([]models.Order, 0)
+		for rows.Next() {
+			var o models.Order
+			if err := rows.Scan(&o.ID, &o.UserID, &o.Total, &o.Status, &o.CreatedAt); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			// load items
+			itemRows, err := database.DB.Query(`SELECT merch_item_id, quantity, unit_price::float8 FROM order_items WHERE order_id=$1 ORDER BY id`, o.ID)
+			if err == nil {
+				for itemRows.Next() {
+					var itemID string
+					var qty int
+					var price float64
+					itemRows.Scan(&itemID, &qty, &price)
+					o.MerchItemIDs = append(o.MerchItemIDs, itemID)
+					o.Quantities = append(o.Quantities, qty)
+					o.UnitPrices = append(o.UnitPrices, price)
+				}
+				itemRows.Close()
+			}
+			orders = append(orders, o)
+		}
+		if err := rows.Err(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"orders": orders, "count": len(orders)})
+		return
+	}
+
 	database.Mu.RLock()
 	defer database.Mu.RUnlock()
 
@@ -97,10 +158,7 @@ func GetMyOrders(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"orders": orders,
-		"count":  len(orders),
-	})
+	c.JSON(http.StatusOK, gin.H{"orders": orders, "count": len(orders)})
 }
 
 // GetOrderByID returns one order if it belongs to the authenticated user.
@@ -112,22 +170,54 @@ func GetOrderByID(c *gin.Context) {
 	}
 
 	orderID := c.Param("id")
+
+	if database.DB != nil {
+		var o models.Order
+		row := database.DB.QueryRow(`SELECT id, user_id::text, total::float8, status, created_at FROM orders WHERE id=$1`, orderID)
+		if err := row.Scan(&o.ID, &o.UserID, &o.Total, &o.Status, &o.CreatedAt); err != nil {
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if o.UserID != userID.(string) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			return
+		}
+		// load items
+		itemRows, err := database.DB.Query(`SELECT merch_item_id, quantity, unit_price::float8 FROM order_items WHERE order_id=$1 ORDER BY id`, o.ID)
+		if err == nil {
+			for itemRows.Next() {
+				var itemID string
+				var qty int
+				var price float64
+				itemRows.Scan(&itemID, &qty, &price)
+				o.MerchItemIDs = append(o.MerchItemIDs, itemID)
+				o.Quantities = append(o.Quantities, qty)
+				o.UnitPrices = append(o.UnitPrices, price)
+			}
+			itemRows.Close()
+		}
+		c.JSON(http.StatusOK, o)
+		return
+	}
+
 	database.Mu.RLock()
+	defer database.Mu.RUnlock()
 
 	for _, order := range database.Orders {
 		if order.ID == orderID {
 			if order.UserID != userID.(string) {
-				database.Mu.RUnlock()
 				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 				return
 			}
 
-			database.Mu.RUnlock()
 			c.JSON(http.StatusOK, order)
 			return
 		}
 	}
-	database.Mu.RUnlock()
 
 	c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 }
@@ -141,12 +231,64 @@ func CancelOrder(c *gin.Context) {
 	}
 
 	orderID := c.Param("id")
+
+	if database.DB != nil {
+		// Check ownership and current status
+		var ownerID, status string
+		row := database.DB.QueryRow(`SELECT user_id::text, status FROM orders WHERE id=$1`, orderID)
+		if err := row.Scan(&ownerID, &status); err != nil {
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if ownerID != userID.(string) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			return
+		}
+		if status == "cancelled" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Order already cancelled"})
+			return
+		}
+
+		_, err := database.DB.Exec(`UPDATE orders SET status='cancelled' WHERE id=$1`, orderID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Return updated order
+		var o models.Order
+		row = database.DB.QueryRow(`SELECT id, user_id::text, total::float8, status, created_at FROM orders WHERE id=$1`, orderID)
+		if err := row.Scan(&o.ID, &o.UserID, &o.Total, &o.Status, &o.CreatedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		itemRows, _ := database.DB.Query(`SELECT merch_item_id, quantity, unit_price::float8 FROM order_items WHERE order_id=$1 ORDER BY id`, o.ID)
+		if itemRows != nil {
+			for itemRows.Next() {
+				var itemID string
+				var qty int
+				var price float64
+				itemRows.Scan(&itemID, &qty, &price)
+				o.MerchItemIDs = append(o.MerchItemIDs, itemID)
+				o.Quantities = append(o.Quantities, qty)
+				o.UnitPrices = append(o.UnitPrices, price)
+			}
+			itemRows.Close()
+		}
+		c.JSON(http.StatusOK, o)
+		return
+	}
+
 	database.Mu.Lock()
+	defer database.Mu.Unlock()
 
 	for i, order := range database.Orders {
 		if order.ID == orderID {
 			if order.UserID != userID.(string) {
-				database.Mu.Unlock()
 				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 				return
 			}
@@ -157,12 +299,10 @@ func CancelOrder(c *gin.Context) {
 			}
 
 			database.Orders[i].Status = "cancelled"
-			database.Mu.Unlock()
 			c.JSON(http.StatusOK, database.Orders[i])
 			return
 		}
 	}
-	database.Mu.Unlock()
 
 	c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 }

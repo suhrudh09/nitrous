@@ -1,18 +1,29 @@
 package database
 
 import (
+	"database/sql"
+	"embed"
+	"encoding/json"
+	"fmt"
 	"log"
 	"nitrous-backend/models"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
+
+//go:embed schema.sql seed.sql
+var dbFiles embed.FS
 
 // In-memory storage for prototype
 // Replace with actual DB connection for production
 var (
+	DB            *sql.DB
 	Mu            sync.RWMutex
 	Events        []models.Event
 	Categories    []models.Category
@@ -48,9 +59,245 @@ type PassPurchase struct {
 }
 
 func InitDB() {
-	log.Println("Initializing in-memory database...")
+	Mu.Lock()
+	defer Mu.Unlock()
 
-	// Seed data
+	if err := initPostgres(); err != nil {
+		log.Printf("PostgreSQL unavailable, falling back to in-memory seed data: %v", err)
+		seedInMemory()
+		log.Println("✓ In-memory database initialized with seed data")
+		return
+	}
+
+	if err := migratePostgres(); err != nil {
+		log.Printf("PostgreSQL migration failed, falling back to in-memory seed data: %v", err)
+		seedInMemory()
+		log.Println("✓ In-memory database initialized with seed data")
+		return
+	}
+
+	if err := loadSeedDataFromPostgres(); err != nil {
+		log.Printf("PostgreSQL seed load failed, falling back to in-memory seed data: %v", err)
+		seedInMemory()
+		log.Println("✓ In-memory database initialized with seed data")
+		return
+	}
+
+	log.Println("✓ Connected to PostgreSQL and loaded seed data")
+}
+
+func initPostgres() error {
+	dsn := postgresDSN()
+	if dsn == "" {
+		return fmt.Errorf("no PostgreSQL connection string configured")
+	}
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return err
+	}
+
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxIdleConns(2)
+	db.SetMaxOpenConns(10)
+
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return err
+	}
+
+	DB = db
+	return nil
+}
+
+func postgresDSN() string {
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		// Add sslmode=disable if not already present
+		if !strings.Contains(url, "sslmode=") {
+			url += "?sslmode=disable"
+		}
+		return url
+	}
+
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+
+	if host == "" || user == "" || dbName == "" {
+		return ""
+	}
+	if port == "" {
+		port = "5432"
+	}
+
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbName)
+}
+
+func migratePostgres() error {
+	if DB == nil {
+		return fmt.Errorf("postgres connection is not initialized")
+	}
+
+	schemaSQL, err := dbFiles.ReadFile("schema.sql")
+	if err != nil {
+		return err
+	}
+	if _, err := DB.Exec(string(schemaSQL)); err != nil {
+		return fmt.Errorf("apply schema: %w", err)
+	}
+
+	seedSQL, err := dbFiles.ReadFile("seed.sql")
+	if err != nil {
+		return err
+	}
+	if _, err := DB.Exec(string(seedSQL)); err != nil {
+		return fmt.Errorf("apply seed data: %w", err)
+	}
+
+	return nil
+}
+
+func loadSeedDataFromPostgres() error {
+	if DB == nil {
+		return fmt.Errorf("postgres connection is not initialized")
+	}
+
+	if err := loadCategoriesFromPostgres(); err != nil {
+		return err
+	}
+	if err := loadEventsFromPostgres(); err != nil {
+		return err
+	}
+	if err := loadJourneysFromPostgres(); err != nil {
+		return err
+	}
+	if err := loadMerchFromPostgres(); err != nil {
+		return err
+	}
+	if err := loadPassesFromPostgres(); err != nil {
+		return err
+	}
+
+	Users = []models.User{}
+	Teams = []models.Team{}
+	Reminders = []models.Reminder{}
+	Orders = []models.Order{}
+	PassPurchases = []PassPurchase{}
+
+	return nil
+}
+
+func loadCategoriesFromPostgres() error {
+	rows, err := DB.Query(`SELECT id, name, slug, icon, live_count, description, color FROM categories ORDER BY name`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	Categories = make([]models.Category, 0)
+	for rows.Next() {
+		var category models.Category
+		if err := rows.Scan(&category.ID, &category.Name, &category.Slug, &category.Icon, &category.LiveCount, &category.Description, &category.Color); err != nil {
+			return err
+		}
+		Categories = append(Categories, category)
+	}
+
+	return rows.Err()
+}
+
+func loadEventsFromPostgres() error {
+	rows, err := DB.Query(`SELECT id, title, location, date, COALESCE(time, ''), is_live, category, COALESCE(thumbnail_url, ''), created_at FROM events ORDER BY date`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	Events = make([]models.Event, 0)
+	for rows.Next() {
+		var event models.Event
+		if err := rows.Scan(&event.ID, &event.Title, &event.Location, &event.Date, &event.Time, &event.IsLive, &event.Category, &event.ThumbnailURL, &event.CreatedAt); err != nil {
+			return err
+		}
+		Events = append(Events, event)
+	}
+
+	return rows.Err()
+}
+
+func loadJourneysFromPostgres() error {
+	rows, err := DB.Query(`SELECT id, title, category, description, COALESCE(badge, ''), slots_left, date, price::float8, COALESCE(thumbnail_url, '') FROM journeys ORDER BY date`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	Journeys = make([]models.Journey, 0)
+	for rows.Next() {
+		var journey models.Journey
+		if err := rows.Scan(&journey.ID, &journey.Title, &journey.Category, &journey.Description, &journey.Badge, &journey.SlotsLeft, &journey.Date, &journey.Price, &journey.ThumbnailURL); err != nil {
+			return err
+		}
+		Journeys = append(Journeys, journey)
+	}
+
+	return rows.Err()
+}
+
+func loadMerchFromPostgres() error {
+	rows, err := DB.Query(`SELECT id, name, icon, price, category FROM merch_items ORDER BY name`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	MerchItems = make([]models.MerchItem, 0)
+	for rows.Next() {
+		var item models.MerchItem
+		if err := rows.Scan(&item.ID, &item.Name, &item.Icon, &item.Price, &item.Category); err != nil {
+			return err
+		}
+		MerchItems = append(MerchItems, item)
+	}
+
+	return rows.Err()
+}
+
+func loadPassesFromPostgres() error {
+	rows, err := DB.Query(`SELECT id, tier, event_name, location, event_date, category, price::float8, perks, spots_left, total_spots, badge, tier_color FROM passes ORDER BY event_date`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	Passes = make([]Pass, 0)
+	for rows.Next() {
+		var pass Pass
+		var perksJSON []byte
+		var badge sql.NullString
+		var eventDate time.Time
+		if err := rows.Scan(&pass.ID, &pass.Tier, &pass.Event, &pass.Location, &eventDate, &pass.Category, &pass.Price, &perksJSON, &pass.SpotsLeft, &pass.TotalSpots, &badge, &pass.TierColor); err != nil {
+			return err
+		}
+		pass.Date = eventDate.UTC().Format(time.RFC3339)
+		if len(perksJSON) > 0 {
+			if err := json.Unmarshal(perksJSON, &pass.Perks); err != nil {
+				return err
+			}
+		}
+		if badge.Valid {
+			value := badge.String
+			pass.Badge = &value
+		}
+		Passes = append(Passes, pass)
+	}
+
+	return rows.Err()
+}
+
+func seedInMemory() {
 	seedUsers()
 	seedEvents()
 	seedCategories()
@@ -60,8 +307,6 @@ func InitDB() {
 	seedTeams()
 	seedReminders()
 	seedOrders()
-
-	log.Println("✓ Database initialized with seed data")
 }
 
 func seedUsers() {
@@ -97,6 +342,16 @@ func seedTeams() {
 }
 
 func CloseDB() {
+	Mu.Lock()
+	defer Mu.Unlock()
+
+	if DB != nil {
+		if err := DB.Close(); err != nil {
+			log.Printf("failed closing database connection: %v", err)
+		}
+		DB = nil
+	}
+
 	log.Println("Closing database connection...")
 }
 
