@@ -169,7 +169,7 @@ func main() {
 		garageConfigs := api.Group("/garage")
 		{
 			garageConfigs.GET("/configs", middleware.AuthMiddleware(), handlers.GetGarageConfigs)
-			garageConfigs.POST("/configs", middleware.AuthMiddleware(), handlers.SaveGarageConfig)
+			garageConfigs.POST("/configs", middleware.AuthMiddleware(), middleware.RequireRoles("participant", "manager", "sponsor", "admin"), handlers.SaveGarageConfig)
 			garageConfigs.DELETE("/configs/:id", middleware.AuthMiddleware(), handlers.DeleteGarageConfig)
 		}
 

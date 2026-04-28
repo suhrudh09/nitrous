@@ -54,12 +54,15 @@ func SaveGarageConfig(c *gin.Context) {
 	}
 
 	if database.DB != nil {
-		_, err = database.DB.Exec(
-			`INSERT INTO garage_configs (id, user_id, name, make, model, year, engine, tuning, created_at, updated_at) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		err = database.DB.QueryRow(
+			`INSERT INTO garage_configs (id, user_id, name, make, model, year, engine, tuning, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (user_id, make, model, year, engine, tuning)
+			DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at
+			RETURNING id, created_at, updated_at`,
 			newConfig.ID, newConfig.UserID, newConfig.Name, newConfig.Make, newConfig.Model,
 			newConfig.Year, newConfig.Engine, newConfig.Tuning, newConfig.CreatedAt, newConfig.UpdatedAt,
-		)
+		).Scan(&newConfig.ID, &newConfig.CreatedAt, &newConfig.UpdatedAt)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 			return
@@ -75,6 +78,19 @@ func SaveGarageConfig(c *gin.Context) {
 	// Store in memory (simple map for demo)
 	if database.GarageConfigs == nil {
 		database.GarageConfigs = make(map[string][]models.GarageConfig)
+	}
+	for i, cfg := range database.GarageConfigs[userID] {
+		if cfg.Make == newConfig.Make &&
+			cfg.Model == newConfig.Model &&
+			cfg.Year == newConfig.Year &&
+			cfg.Engine == newConfig.Engine &&
+			cfg.Tuning == newConfig.Tuning {
+			newConfig.ID = cfg.ID
+			newConfig.CreatedAt = cfg.CreatedAt
+			database.GarageConfigs[userID][i] = newConfig
+			c.JSON(http.StatusCreated, gin.H{"config": newConfig, "message": "Configuration saved"})
+			return
+		}
 	}
 	database.GarageConfigs[userID] = append(database.GarageConfigs[userID], newConfig)
 
