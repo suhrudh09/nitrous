@@ -65,24 +65,15 @@ func InitDB() {
 	defer Mu.Unlock()
 
 	if err := initPostgres(); err != nil {
-		log.Printf("PostgreSQL unavailable, falling back to in-memory seed data: %v", err)
-		seedInMemory()
-		log.Println("✓ In-memory database initialized with seed data")
-		return
+		log.Fatalf("PostgreSQL unavailable: %v", err)
 	}
 
 	if err := migratePostgres(); err != nil {
-		log.Printf("PostgreSQL migration failed, falling back to in-memory seed data: %v", err)
-		seedInMemory()
-		log.Println("✓ In-memory database initialized with seed data")
-		return
+		log.Fatalf("PostgreSQL migration failed: %v", err)
 	}
 
 	if err := loadSeedDataFromPostgres(); err != nil {
-		log.Printf("PostgreSQL seed load failed, falling back to in-memory seed data: %v", err)
-		seedInMemory()
-		log.Println("✓ In-memory database initialized with seed data")
-		return
+		log.Fatalf("PostgreSQL seed load failed: %v", err)
 	}
 
 	log.Println("✓ Connected to PostgreSQL and loaded seed data")
@@ -166,6 +157,12 @@ func loadSeedDataFromPostgres() error {
 		return fmt.Errorf("postgres connection is not initialized")
 	}
 
+	if err := loadUsersFromPostgres(); err != nil {
+		return err
+	}
+	if err := loadTeamsFromPostgres(); err != nil {
+		return err
+	}
 	if err := loadCategoriesFromPostgres(); err != nil {
 		return err
 	}
@@ -189,6 +186,107 @@ func loadSeedDataFromPostgres() error {
 	PassPurchases = []PassPurchase{}
 
 	return nil
+}
+
+func loadUsersFromPostgres() error {
+	rows, err := DB.Query(`SELECT id, email, password_hash, role, name, created_at FROM users ORDER BY email`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	Users = make([]models.User, 0)
+	for rows.Next() {
+		var user models.User
+		if err := rows.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.Name, &user.CreatedAt); err != nil {
+			return err
+		}
+		Users = append(Users, user)
+	}
+
+	return rows.Err()
+}
+
+func loadTeamsFromPostgres() error {
+	rows, err := DB.Query(`SELECT id, name, COALESCE(country, ''), is_private, followers_count, created_at FROM teams ORDER BY name`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	Teams = make([]models.Team, 0)
+	for rows.Next() {
+		var team models.Team
+		if err := rows.Scan(&team.ID, &team.Name, &team.Country, &team.IsPrivate, &team.FollowersCount, &team.CreatedAt); err != nil {
+			return err
+		}
+		Teams = append(Teams, team)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	teamByID := make(map[string]*models.Team, len(Teams))
+	for i := range Teams {
+		teamByID[Teams[i].ID] = &Teams[i]
+	}
+
+	if err := loadTeamStringRelations(`SELECT team_id, user_id FROM team_managers ORDER BY team_id, user_id`, func(teamID, value string) {
+		if team := teamByID[teamID]; team != nil {
+			team.Managers = append(team.Managers, value)
+		}
+	}); err != nil {
+		return err
+	}
+	if err := loadTeamStringRelations(`SELECT team_id, user_id FROM team_members ORDER BY team_id, user_id`, func(teamID, value string) {
+		if team := teamByID[teamID]; team != nil {
+			team.Members = append(team.Members, value)
+		}
+	}); err != nil {
+		return err
+	}
+	if err := loadTeamStringRelations(`SELECT team_id, user_id FROM team_sponsors ORDER BY team_id, user_id`, func(teamID, value string) {
+		if team := teamByID[teamID]; team != nil {
+			team.Sponsors = append(team.Sponsors, value)
+		}
+	}); err != nil {
+		return err
+	}
+	if err := loadTeamStringRelations(`SELECT team_id, driver_name FROM team_drivers ORDER BY team_id, driver_name`, func(teamID, value string) {
+		if team := teamByID[teamID]; team != nil {
+			team.Drivers = append(team.Drivers, value)
+		}
+	}); err != nil {
+		return err
+	}
+	if err := loadTeamStringRelations(`SELECT team_id, user_id FROM team_followers ORDER BY team_id, user_id`, func(teamID, value string) {
+		if team := teamByID[teamID]; team != nil {
+			team.Followers = append(team.Followers, value)
+		}
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func loadTeamStringRelations(query string, assign func(teamID, value string)) error {
+	rows, err := DB.Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var teamID string
+		var value string
+		if err := rows.Scan(&teamID, &value); err != nil {
+			return err
+		}
+		assign(teamID, value)
+	}
+
+	return rows.Err()
 }
 
 func loadCategoriesFromPostgres() error {
@@ -312,9 +410,10 @@ func seedInMemory() {
 }
 
 func seedUsers() {
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin12345"), bcrypt.DefaultCost)
+	pw := "password123"
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 	if err != nil {
-		log.Printf("failed to seed admin user password hash: %v", err)
+		log.Printf("failed to seed users password hash: %v", err)
 		Users = []models.User{}
 		return
 	}
@@ -322,10 +421,42 @@ func seedUsers() {
 	Users = []models.User{
 		{
 			ID:           uuid.New().String(),
-			Email:        "admin@nitrous.local",
+			Email:        "viewer@example.com",
+			PasswordHash: string(passwordHash),
+			Role:         "viewer",
+			Name:         "Viewer User",
+			CreatedAt:    time.Now(),
+		},
+		{
+			ID:           uuid.New().String(),
+			Email:        "participant@example.com",
+			PasswordHash: string(passwordHash),
+			Role:         "participant",
+			Name:         "Participant User",
+			CreatedAt:    time.Now(),
+		},
+		{
+			ID:           uuid.New().String(),
+			Email:        "manager@example.com",
+			PasswordHash: string(passwordHash),
+			Role:         "manager",
+			Name:         "Manager User",
+			CreatedAt:    time.Now(),
+		},
+		{
+			ID:           uuid.New().String(),
+			Email:        "sponsor@example.com",
+			PasswordHash: string(passwordHash),
+			Role:         "sponsor",
+			Name:         "Sponsor User",
+			CreatedAt:    time.Now(),
+		},
+		{
+			ID:           uuid.New().String(),
+			Email:        "admin@example.com",
 			PasswordHash: string(passwordHash),
 			Role:         "admin",
-			Name:         "Nitrous Admin",
+			Name:         "Admin User",
 			CreatedAt:    time.Now(),
 		},
 	}

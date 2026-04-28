@@ -2,6 +2,51 @@
 -- These rows mirror the prototype content currently shown in the app.
 -- The file is idempotent so it can be executed safely during initialization.
 
+INSERT INTO users (id, email, password_hash, role, name)
+VALUES
+    ('10000000-0000-0000-0000-000000000001', 'viewer@example.com', crypt('password123', gen_salt('bf')), 'viewer', 'Viewer User'),
+    ('10000000-0000-0000-0000-000000000002', 'participant@example.com', crypt('password123', gen_salt('bf')), 'participant', 'Participant User'),
+    ('10000000-0000-0000-0000-000000000003', 'manager@example.com', crypt('password123', gen_salt('bf')), 'manager', 'Manager User'),
+    ('10000000-0000-0000-0000-000000000004', 'sponsor@example.com', crypt('password123', gen_salt('bf')), 'sponsor', 'Sponsor User'),
+    ('10000000-0000-0000-0000-000000000005', 'admin@example.com', crypt('password123', gen_salt('bf')), 'admin', 'Admin User')
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO teams (id, name, country, is_private, followers_count)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', 'Nitro Redline', 'USA', FALSE, 1),
+    ('20000000-0000-0000-0000-000000000002', 'Apex Velocity', 'UK', TRUE, 0)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO team_managers (team_id, user_id)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000003'),
+    ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000005')
+ON CONFLICT (team_id, user_id) DO NOTHING;
+
+INSERT INTO team_members (team_id, user_id)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001'),
+    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002'),
+    ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002')
+ON CONFLICT (team_id, user_id) DO NOTHING;
+
+INSERT INTO team_sponsors (team_id, user_id)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000004')
+ON CONFLICT (team_id, user_id) DO NOTHING;
+
+INSERT INTO team_drivers (team_id, driver_name)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', 'Luca Moretti'),
+    ('20000000-0000-0000-0000-000000000001', 'Maya Singh'),
+    ('20000000-0000-0000-0000-000000000002', 'Noah Carter')
+ON CONFLICT (team_id, driver_name) DO NOTHING;
+
+INSERT INTO team_followers (team_id, user_id)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001')
+ON CONFLICT (team_id, user_id) DO NOTHING;
+
 INSERT INTO categories (id, name, slug, icon, live_count, description, color)
 VALUES
     ('11111111-1111-1111-1111-111111111111', 'MOTORSPORT', 'motorsport', 'R', 24, 'NASCAR - F1 - Dirt - Rally', 'cyan'),
