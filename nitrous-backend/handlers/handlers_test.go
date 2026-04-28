@@ -19,7 +19,8 @@ func init() {
 }
 
 func TestGetEvents_ListAndCategoryFilter(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	// no filter
 	w := httptest.NewRecorder()
@@ -76,7 +77,8 @@ func TestGetEvents_ListAndCategoryFilter(t *testing.T) {
 }
 
 func TestGetLiveEvents_ReturnsOnlyLive(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -107,7 +109,8 @@ func TestGetLiveEvents_ReturnsOnlyLive(t *testing.T) {
 }
 
 func TestGetEventByID_FoundAndNotFound(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	// found
 	id := database.Events[0].ID
@@ -133,7 +136,8 @@ func TestGetEventByID_FoundAndNotFound(t *testing.T) {
 }
 
 func TestCategories_ListAndBySlug(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	// list
 	w := httptest.NewRecorder()
@@ -176,7 +180,8 @@ func TestCategories_ListAndBySlug(t *testing.T) {
 }
 
 func TestJourneys_ListAndByID(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	// list
 	w := httptest.NewRecorder()
@@ -219,7 +224,8 @@ func TestJourneys_ListAndByID(t *testing.T) {
 }
 
 func TestMerch_ListAndByID(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	// list
 	w := httptest.NewRecorder()
@@ -262,7 +268,8 @@ func TestMerch_ListAndByID(t *testing.T) {
 }
 
 func TestTeams_ListAndByID(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	// list
 	w := httptest.NewRecorder()
@@ -308,7 +315,8 @@ func TestTeams_ListAndByID(t *testing.T) {
 }
 
 func TestStreams_ListAndByID(t *testing.T) {
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	// list
 	w := httptest.NewRecorder()
@@ -355,7 +363,8 @@ func TestStreams_ListAndByID(t *testing.T) {
 
 func TestStreamsWS_UpgradeAndTelemetryBroadcast(t *testing.T) {
 	// Start hub and server
-	database.InitDB()
+	setupHandlersTestEnv()
+	seedHandlersCatalogData()
 
 	r := gin.New()
 	r.GET("/ws", StreamsWS)
