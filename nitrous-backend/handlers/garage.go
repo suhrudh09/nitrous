@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"nitrous-backend/database"
 	"strconv"
 	"strings"
 	"time"
@@ -440,10 +441,26 @@ func GetGarageTuningConfigs(c *gin.Context) {
 // POST /api/garage/tune
 // Body: { "make": "Ferrari", "model": "F40", "year": 1992, "tuning": "track" }
 func PostGarageTune(c *gin.Context) {
-	var req TuneRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var body struct {
+		TuneRequest
+		TeamID string `json:"teamId,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	req := body.TuneRequest
+
+	// current user must exist (route protected by Auth + RequireRoles)
+	uidI, ok := c.Get("userID")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	uid := uidI.(string)
+	role := ""
+	if v, ok := c.Get("userRole"); ok {
+		role = v.(string)
 	}
 	cfg, ok := tuningConfigs[req.Tuning]
 	if !ok {
@@ -459,6 +476,39 @@ func PostGarageTune(c *gin.Context) {
 	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no data found for this vehicle"})
 		return
+	}
+
+	// If a team is specified, verify manager ownership (unless admin)
+	if body.TeamID != "" && role == "manager" {
+		if database.DB != nil {
+			var owns bool
+			if err := database.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM team_managers WHERE team_id=$1 AND user_id=$2)`, body.TeamID, uid).Scan(&owns); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if !owns {
+				c.JSON(http.StatusForbidden, gin.H{"error": "manager does not own the specified team"})
+				return
+			}
+		} else {
+			// in-memory check
+			found := false
+			for _, t := range database.Teams {
+				if t.ID == body.TeamID {
+					for _, m := range t.Managers {
+						if m == uid {
+							found = true
+							break
+						}
+					}
+					break
+				}
+			}
+			if !found {
+				c.JSON(http.StatusForbidden, gin.H{"error": "manager does not own the specified team"})
+				return
+			}
+		}
 	}
 
 	base := buildNHTSASpec(req.Make, resolved.ModelName, req.Year)

@@ -51,7 +51,7 @@ func main() {
 			garage.GET("/trims", handlers.GetGarageTrims)
 			garage.GET("/vehicle", handlers.GetGarageVehicle)
 			garage.GET("/tuning-configs", handlers.GetGarageTuningConfigs)
-			garage.POST("/tune", handlers.PostGarageTune)
+			garage.POST("/tune", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.PostGarageTune)
 			garage.GET("/search", handlers.GetGarageSearch)
 		}
 
@@ -99,11 +99,26 @@ func main() {
 		{
 			teams.GET("", handlers.GetTeams)
 			teams.GET("/:id", handlers.GetTeamByID)
-			teams.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateTeam)
-			teams.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateTeam)
+			teams.POST("", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.CreateTeam)
+			teams.PUT("/:id", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.UpdateTeam)
 			teams.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteTeam)
+			teams.POST("/:id/managers", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.AddTeamManager)
+			teams.DELETE("/:id/managers/:userId", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.RemoveTeamManager)
+			teams.GET("/:id/members", handlers.ListTeamMembers)
+			teams.POST("/:id/members", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.AddTeamMember)
+			teams.DELETE("/:id/members/:userId", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.RemoveTeamMember)
+			teams.GET("/:id/sponsors", handlers.ListTeamSponsors)
+			teams.POST("/:id/sponsors", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.AddTeamSponsor)
+			teams.DELETE("/:id/sponsors/:userId", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), handlers.RemoveTeamSponsor)
 			teams.POST("/:id/follow", middleware.AuthMiddleware(), handlers.FollowTeam)
 			teams.POST("/:id/unfollow", middleware.AuthMiddleware(), handlers.UnfollowTeam)
+		}
+
+		// Admin-only routes for syncs and role management
+		admin := api.Group("/admin")
+		{
+			admin.POST("/sync", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.AdminTriggerSync)
+			admin.POST("/users/:id/role", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.AdminSetUserRole)
 		}
 
 		// Streams
@@ -151,11 +166,11 @@ func main() {
 		}
 
 		// Garage Configs
-		garage := api.Group("/garage")
+		garageConfigs := api.Group("/garage")
 		{
-			garage.GET("/configs", middleware.AuthMiddleware(), handlers.GetGarageConfigs)
-			garage.POST("/configs", middleware.AuthMiddleware(), handlers.SaveGarageConfig)
-			garage.DELETE("/configs/:id", middleware.AuthMiddleware(), handlers.DeleteGarageConfig)
+			garageConfigs.GET("/configs", middleware.AuthMiddleware(), handlers.GetGarageConfigs)
+			garageConfigs.POST("/configs", middleware.AuthMiddleware(), handlers.SaveGarageConfig)
+			garageConfigs.DELETE("/configs/:id", middleware.AuthMiddleware(), handlers.DeleteGarageConfig)
 		}
 
 		// Payments

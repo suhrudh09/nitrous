@@ -357,6 +357,36 @@ func DeleteJourney(c *gin.Context) {
 // BookJourney handles journey booking
 func BookJourney(c *gin.Context) {
 	id := c.Param("id")
+	// enforce registration role rules: participants cannot self-register; managers/admins may register others
+	var currentUserRole string
+	if v, ok := c.Get("userRole"); ok {
+		currentUserRole = v.(string)
+	}
+
+	// optional body to allow booking on behalf of another user (manager/admin only)
+	var body struct {
+		UserID string `json:"userId,omitempty"`
+	}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	if body.UserID != "" {
+		// only manager or admin can book for others
+		if currentUserRole != "admin" && currentUserRole != "manager" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only managers or admins can register other users"})
+			return
+		}
+	} else {
+		// self-registration: participants not allowed
+		if currentUserRole == "participant" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "participants cannot register for journeys"})
+			return
+		}
+	}
 	if database.DB != nil {
 		// Attempt to decrement slots atomically
 		res, err := database.DB.Exec(`UPDATE journeys SET slots_left = slots_left - 1 WHERE id = $1 AND slots_left > 0`, id)

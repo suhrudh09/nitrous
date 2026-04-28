@@ -54,6 +54,10 @@ type Team struct {
 	Name           string    `json:"name"`
 	Country        string    `json:"country,omitempty"`
 	Drivers        []string  `json:"drivers,omitempty"`
+	IsPrivate      bool      `json:"isPrivate,omitempty"`
+	Managers       []string  `json:"managers,omitempty"`
+	Sponsors       []string  `json:"sponsors,omitempty"`
+	Members        []string  `json:"members,omitempty"`
 	Followers      []string  `json:"followers,omitempty"`
 	FollowersCount int       `json:"followersCount"`
 	CreatedAt      time.Time `json:"createdAt"`

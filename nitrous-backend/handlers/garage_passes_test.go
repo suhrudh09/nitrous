@@ -11,6 +11,7 @@ import (
 
 	"nitrous-backend/database"
 	"nitrous-backend/middleware"
+	"nitrous-backend/models"
 
 	"github.com/gin-gonic/gin"
 )
@@ -118,13 +119,15 @@ func TestGetGarageVehicleReturnsSpec(t *testing.T) {
 
 func TestPostGarageTuneAppliesConfig(t *testing.T) {
 	setupHandlersTestEnv()
+	database.Users = []models.User{{ID: "manager-1", Email: "manager@example.com", Role: "manager"}}
 
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: mockNHTSATransport()}
 	defer func() { httpClient = oldClient }()
 
 	r := gin.New()
-	r.POST("/garage/tune", PostGarageTune)
+	r.POST("/garage/tune", middleware.AuthMiddleware(), middleware.RequireRoles("admin", "manager"), PostGarageTune)
+	token := makeToken(t, "manager-1")
 
 	body := map[string]any{
 		"make":   "Toyota",
@@ -132,7 +135,7 @@ func TestPostGarageTuneAppliesConfig(t *testing.T) {
 		"year":   2024,
 		"tuning": "track",
 	}
-	w := performJSONRequest(r, http.MethodPost, "/garage/tune", body, "")
+	w := performJSONRequest(r, http.MethodPost, "/garage/tune", body, token)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for valid garage tune, got %d: %s", w.Code, w.Body.String())
 	}
