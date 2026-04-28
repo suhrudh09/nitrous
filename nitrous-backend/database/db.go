@@ -179,8 +179,6 @@ func loadSeedDataFromPostgres() error {
 		return err
 	}
 
-	Users = []models.User{}
-	Teams = []models.Team{}
 	Reminders = []models.Reminder{}
 	Orders = []models.Order{}
 	PassPurchases = []PassPurchase{}

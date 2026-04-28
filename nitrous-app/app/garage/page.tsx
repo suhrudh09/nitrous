@@ -76,6 +76,7 @@ interface SavedVehicleConfig {
   model: string
   year: number
   engine: string
+  tuning: TuningKey
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -275,6 +276,29 @@ export default function GaragePage() {
   const selected = buildCarEntry(selectedMake, selectedModel, selectedYear)
   const accent = selected.accentColor
 
+  // Load saved configs from backend on mount
+  useEffect(() => {
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) return
+    fetch(`${GARAGE_API_BASE}/garage/configs`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then((data: { configs?: Array<{ id: string; make: string; model: string; year: number; engine: string; tuning?: string }> } | null) => {
+        if (data?.configs) {
+          setSavedConfigs(data.configs.map(c => ({
+            id: c.id,
+            make: c.make,
+            model: c.model,
+            year: c.year,
+            engine: c.engine,
+            tuning: TUNING_KEYS.includes((c.tuning ?? 'stock') as TuningKey) ? (c.tuning as TuningKey) : 'stock',
+          })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     setLoadingMakes(true)
@@ -369,7 +393,7 @@ export default function GaragePage() {
   }, [selectedMake, selectedModel, selectedYear])
 
   useEffect(() => {
-    if (!spec || tuning === 'stock') {
+    if (!spec || tuning === 'stock' || !canTune) {
       setTuneResult(null)
       setTuneError(null)
       return
@@ -394,7 +418,7 @@ export default function GaragePage() {
     return () => {
       cancelled = true
     }
-  }, [spec, tuning, selectedMake, selectedModel, selectedYear, selectedTeam])
+  }, [spec, tuning, selectedMake, selectedModel, selectedYear, selectedTeam, canTune])
 
   const drawGrid = useCallback(() => {
     const canvas = canvasRef.current
@@ -495,18 +519,55 @@ export default function GaragePage() {
   const activeWt = tuned?.weight ?? displaySpec.weight
   const delta = tuneResult?.delta ?? null
 
-  const saveCurrentConfig = () => {
+  const saveCurrentConfig = async () => {
     if (!selectedMake || !selectedModel || !selectedYear) return
+    if (user?.role === 'viewer') return
     const engineValue = spec?.engine || 'N/A'
+    const token = localStorage.getItem('nitrous_token')
 
+    if (token) {
+      try {
+        const res = await fetch(`${GARAGE_API_BASE}/garage/configs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            name: `${selectedMake} ${selectedModel} ${selectedYear}`,
+            make: selectedMake,
+            model: selectedModel,
+            year: selectedYear,
+            engine: engineValue,
+            tuning,
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json() as { config: { id: string; make: string; model: string; year: number; engine: string; tuning?: string } }
+          const saved = data.config
+          const savedTuning = TUNING_KEYS.includes((saved.tuning ?? tuning) as TuningKey)
+            ? ((saved.tuning ?? tuning) as TuningKey)
+            : 'stock'
+          setSavedConfigs(prev => {
+            const next = prev.filter(c => c.id !== saved.id)
+            return [{ id: saved.id, make: saved.make, model: saved.model, year: saved.year, engine: saved.engine, tuning: savedTuning }, ...next].slice(0, 10)
+          })
+          return
+        }
+      } catch {
+        return
+      }
+
+      // Authenticated requests should not fall back to local-only saves.
+      return
+    }
+
+    // Fallback: local state only (unauthenticated)
     const config: SavedVehicleConfig = {
       id: `${selectedMake}|${selectedModel}|${selectedYear}|${engineValue}`,
       make: selectedMake,
       model: selectedModel,
       year: selectedYear,
       engine: engineValue,
+      tuning,
     }
-
     setSavedConfigs(prev => {
       if (prev.some(saved => saved.id === config.id)) return prev
       return [config, ...prev].slice(0, 10)
@@ -518,7 +579,7 @@ export default function GaragePage() {
     setSelectedMake(saved.make)
     setSelectedModel(saved.model)
     setSelectedYear(saved.year)
-    setTuning('stock')
+    setTuning(saved.tuning)
   }
 
   const statusText = loadingSpec
@@ -540,7 +601,7 @@ export default function GaragePage() {
         {showAccessDenied && (
           <div className={styles.accessBanner}>
             <span className={styles.accessIcon}>🔒</span>
-            <span>TUNING UNAVAILABLE — You need Manager or Admin role to access vehicle tuning</span>
+            <span>LIVE TUNING UNAVAILABLE — You need Manager or Admin role to run server tuning</span>
           </div>
         )}
 
@@ -630,7 +691,8 @@ export default function GaragePage() {
               className={styles.tuningBtn}
               style={{ width: '100%', marginTop: 8, borderColor: accent, color: accent, background: `${accent}15` }}
               onClick={saveCurrentConfig}
-              disabled={!selectedMake || !selectedModel || !selectedYear}
+              disabled={!selectedMake || !selectedModel || !selectedYear || user?.role === 'viewer'}
+              title={user?.role === 'viewer' ? 'Viewers cannot save configurations' : undefined}
             >
               SAVE CONFIGURATION
             </button>
@@ -660,7 +722,7 @@ export default function GaragePage() {
                         <div className={styles.carSlotInfo}>
                           <div className={styles.carSlotMake}>{saved.make}</div>
                           <div className={styles.carSlotModel}>{saved.model}</div>
-                          <div className={styles.carSlotYear}>{saved.year} • {saved.engine}</div>
+                          <div className={styles.carSlotYear}>{saved.year} • {saved.engine} • {TUNING_LABELS[saved.tuning]}</div>
                         </div>
                         <div
                           className={styles.catBadge}
@@ -747,7 +809,7 @@ export default function GaragePage() {
                     className={`${styles.tuningBtn} ${tuning === key ? styles.tuningBtnActive : ''}`}
                     style={tuning === key ? { borderColor: accent, color: accent, background: `${accent}15` } : {}}
                     onClick={() => setTuning(key)}
-                    disabled={!canTune && !showAccessDenied}
+                    disabled={user?.role === 'viewer'}
                   >
                     {TUNING_LABELS[key]}
                   </button>

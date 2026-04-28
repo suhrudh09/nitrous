@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"database/sql"
 	"net/http"
 	"nitrous-backend/database"
 	"nitrous-backend/utils"
@@ -69,6 +70,30 @@ func AdminMiddleware() gin.HandlerFunc {
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 			c.Abort()
+			return
+		}
+
+		if database.DB != nil {
+			var role string
+			row := database.DB.QueryRow(`SELECT role FROM users WHERE id = $1`, userID.(string))
+			if err := row.Scan(&role); err != nil {
+				if err == sql.ErrNoRows {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				}
+				c.Abort()
+				return
+			}
+
+			if role != "admin" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+				c.Abort()
+				return
+			}
+
+			c.Set("userRole", role)
+			c.Next()
 			return
 		}
 

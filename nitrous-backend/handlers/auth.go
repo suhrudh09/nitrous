@@ -29,12 +29,19 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Create user struct (new registrations always start as viewer)
+	// Determine role: viewer/participant/manager/sponsor are self-selectable; admin requires admin assignment
+	role := req.Role
+	allowed := map[string]bool{"viewer": true, "participant": true, "manager": true, "sponsor": true}
+	if !allowed[role] {
+		role = "viewer"
+	}
+
+	// Create user struct
 	newUser := models.User{
 		ID:           uuid.New().String(),
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
-		Role:         "viewer",
+		Role:         role,
 		Name:         req.Name,
 		CreatedAt:    time.Now(),
 	}

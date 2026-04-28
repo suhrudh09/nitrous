@@ -295,10 +295,24 @@ export async function removeTeamSponsor(
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export async function triggerSync(token: string): Promise<{ message: string; results: Record<string, { success: boolean; error?: string }> }> {
-  return fetchAPI<{ message: string; results: Record<string, { success: boolean; error?: string }> }>('/admin/sync', {
+  const data = await fetchAPI<{ results: Record<string, string> }>('/admin/sync', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
+
+  const normalizedResults: Record<string, { success: boolean; error?: string }> = {}
+  for (const [provider, value] of Object.entries(data.results ?? {})) {
+    if (value === 'ok') {
+      normalizedResults[provider] = { success: true }
+    } else {
+      normalizedResults[provider] = { success: false, error: value || 'Failed' }
+    }
+  }
+
+  return {
+    message: 'Sync completed',
+    results: normalizedResults,
+  }
 }
 
 export async function updateUserRole(

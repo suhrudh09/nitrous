@@ -200,6 +200,8 @@ CREATE TABLE IF NOT EXISTS garage_configs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_garage_configs_user_id ON garage_configs(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_garage_configs_user_vehicle_tuning
+    ON garage_configs(user_id, make, model, year, engine, tuning);
 
 -- Payment transactions
 CREATE TABLE IF NOT EXISTS payments (
