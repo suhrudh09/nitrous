@@ -91,6 +91,38 @@ type User struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+// GarageConfig represents a user's saved vehicle configuration
+type GarageConfig struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	Name      string    `json:"name"`
+	Make      string    `json:"make"`
+	Model     string    `json:"model"`
+	Year      int       `json:"year"`
+	Engine    string    `json:"engine"`
+	Tuning    string    `json:"tuning"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// Payment represents a payment transaction
+type Payment struct {
+	ID                    string                 `json:"id"`
+	UserID                string                 `json:"userId"`
+	Amount                float64                `json:"amount"`
+	Currency              string                 `json:"currency"`
+	Status                string                 `json:"status"`
+	PaymentMethod         string                 `json:"paymentMethod"`
+	StripePaymentIntentID string                 `json:"stripePaymentIntentId,omitempty"`
+	StripeCustomerID      string                 `json:"stripeCustomerId,omitempty"`
+	Description           string                 `json:"description"`
+	ReferenceType         string                 `json:"referenceType"`
+	ReferenceID           string                 `json:"referenceId"`
+	Metadata              map[string]interface{} `json:"metadata"`
+	CreatedAt             time.Time              `json:"createdAt"`
+	UpdatedAt             time.Time              `json:"updatedAt"`
+}
+
 // LoginRequest for authentication
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`

@@ -35,6 +35,8 @@ var (
 	Teams         []models.Team
 	Reminders     []models.Reminder
 	Orders        []models.Order
+	GarageConfigs map[string][]models.GarageConfig
+	Payments      []models.Payment
 )
 
 type Pass struct {

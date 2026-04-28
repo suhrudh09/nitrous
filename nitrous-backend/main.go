@@ -149,6 +149,23 @@ func main() {
 			auth.POST("/login", handlers.Login)
 			auth.GET("/me", middleware.AuthMiddleware(), handlers.GetCurrentUser)
 		}
+
+		// Garage Configs
+		garage := api.Group("/garage")
+		{
+			garage.GET("/configs", middleware.AuthMiddleware(), handlers.GetGarageConfigs)
+			garage.POST("/configs", middleware.AuthMiddleware(), handlers.SaveGarageConfig)
+			garage.DELETE("/configs/:id", middleware.AuthMiddleware(), handlers.DeleteGarageConfig)
+		}
+
+		// Payments
+		payments := api.Group("/payments")
+		{
+			payments.POST("/create-intent", middleware.AuthMiddleware(), handlers.CreatePaymentIntent)
+			payments.POST("/:id/confirm", middleware.AuthMiddleware(), handlers.ConfirmPayment)
+			payments.GET("/:id/status", middleware.AuthMiddleware(), handlers.GetPaymentStatus)
+			payments.GET("", middleware.AuthMiddleware(), handlers.GetUserPayments)
+		}
 	}
 
 	log.Println("🚀 Nitrous API server starting on :8080")
