@@ -53,6 +53,9 @@ func main() {
 			garage.GET("/tuning-configs", handlers.GetGarageTuningConfigs)
 			garage.POST("/tune", handlers.PostGarageTune)
 			garage.GET("/search", handlers.GetGarageSearch)
+			garage.GET("/configs", middleware.AuthMiddleware(), handlers.GetGarageConfigs)
+			garage.POST("/configs", middleware.AuthMiddleware(), handlers.SaveGarageConfig)
+			garage.DELETE("/configs/:id", middleware.AuthMiddleware(), handlers.DeleteGarageConfig)
 		}
 
 		// Events
@@ -148,14 +151,6 @@ func main() {
 			auth.POST("/register", handlers.Register)
 			auth.POST("/login", handlers.Login)
 			auth.GET("/me", middleware.AuthMiddleware(), handlers.GetCurrentUser)
-		}
-
-		// Garage Configs
-		garage := api.Group("/garage")
-		{
-			garage.GET("/configs", middleware.AuthMiddleware(), handlers.GetGarageConfigs)
-			garage.POST("/configs", middleware.AuthMiddleware(), handlers.SaveGarageConfig)
-			garage.DELETE("/configs/:id", middleware.AuthMiddleware(), handlers.DeleteGarageConfig)
 		}
 
 		// Payments
