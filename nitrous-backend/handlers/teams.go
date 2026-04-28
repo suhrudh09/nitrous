@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"nitrous-backend/database"
 	"nitrous-backend/models"
+	"nitrous-backend/utils"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,8 +15,36 @@ import (
 
 // GetTeams returns all teams
 func GetTeams(c *gin.Context) {
+	// attempt to resolve optional current user (non-fatal)
+	var currentUserID string
+	var currentUserRole string
+	if v, ok := c.Get("userID"); ok {
+		currentUserID = v.(string)
+	} else {
+		// try optional token parse
+		if auth := c.GetHeader("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			token := strings.TrimPrefix(auth, "Bearer ")
+			if claims, err := utils.ValidateJWT(token); err == nil {
+				currentUserID = claims.UserID
+				// try to set role from in-memory users if DB nil
+				if database.DB == nil {
+					for _, u := range database.Users {
+						if u.ID == currentUserID {
+							currentUserRole = u.Role
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if v, ok := c.Get("userRole"); ok {
+		currentUserRole = v.(string)
+	}
+
 	if database.DB != nil {
-		rows, err := database.DB.Query(`SELECT id, name, country, followers_count, created_at FROM teams ORDER BY name`)
+		rows, err := database.DB.Query(`SELECT id, name, country, followers_count, created_at, is_private FROM teams ORDER BY name`)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -24,10 +54,12 @@ func GetTeams(c *gin.Context) {
 		teams := make([]models.Team, 0)
 		for rows.Next() {
 			var t models.Team
-			if err := rows.Scan(&t.ID, &t.Name, &t.Country, &t.FollowersCount, &t.CreatedAt); err != nil {
+			var isPrivate bool
+			if err := rows.Scan(&t.ID, &t.Name, &t.Country, &t.FollowersCount, &t.CreatedAt, &isPrivate); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
+			t.IsPrivate = isPrivate
 			// load drivers
 			drvRows, err := database.DB.Query(`SELECT driver_name FROM team_drivers WHERE team_id = $1 ORDER BY driver_name`, t.ID)
 			if err == nil {
@@ -48,6 +80,66 @@ func GetTeams(c *gin.Context) {
 				}
 				folRows.Close()
 			}
+			// load managers, members, sponsors
+			mgrRows, _ := database.DB.Query(`SELECT user_id::text FROM team_managers WHERE team_id = $1`, t.ID)
+			if mgrRows != nil {
+				for mgrRows.Next() {
+					var u string
+					mgrRows.Scan(&u)
+					t.Managers = append(t.Managers, u)
+				}
+				mgrRows.Close()
+			}
+			memRows, _ := database.DB.Query(`SELECT user_id::text FROM team_members WHERE team_id = $1`, t.ID)
+			if memRows != nil {
+				for memRows.Next() {
+					var u string
+					memRows.Scan(&u)
+					t.Members = append(t.Members, u)
+				}
+				memRows.Close()
+			}
+			sponRows, _ := database.DB.Query(`SELECT user_id::text FROM team_sponsors WHERE team_id = $1`, t.ID)
+			if sponRows != nil {
+				for sponRows.Next() {
+					var u string
+					sponRows.Scan(&u)
+					t.Sponsors = append(t.Sponsors, u)
+				}
+				sponRows.Close()
+			}
+
+			// enforce visibility: if private and current user cannot see, skip
+			if t.IsPrivate {
+				allowed := false
+				if currentUserRole == "admin" {
+					allowed = true
+				}
+				if currentUserID != "" {
+					for _, u := range t.Members {
+						if u == currentUserID {
+							allowed = true
+							break
+						}
+					}
+					for _, u := range t.Managers {
+						if u == currentUserID {
+							allowed = true
+							break
+						}
+					}
+					for _, u := range t.Sponsors {
+						if u == currentUserID {
+							allowed = true
+							break
+						}
+					}
+				}
+				if !allowed {
+					continue
+				}
+			}
+
 			teams = append(teams, t)
 		}
 		if err := rows.Err(); err != nil {
@@ -67,10 +159,28 @@ func GetTeams(c *gin.Context) {
 // GetTeamByID returns a single team by ID
 func GetTeamByID(c *gin.Context) {
 	id := c.Param("id")
+
+	// optional current user
+	var currentUserID string
+	var currentUserRole string
+	if v, ok := c.Get("userID"); ok {
+		currentUserID = v.(string)
+	} else {
+		if auth := c.GetHeader("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			token := strings.TrimPrefix(auth, "Bearer ")
+			if claims, err := utils.ValidateJWT(token); err == nil {
+				currentUserID = claims.UserID
+			}
+		}
+	}
+	if v, ok := c.Get("userRole"); ok {
+		currentUserRole = v.(string)
+	}
+
 	if database.DB != nil {
 		var t models.Team
-		row := database.DB.QueryRow(`SELECT id, name, country, followers_count, created_at FROM teams WHERE id = $1`, id)
-		if err := row.Scan(&t.ID, &t.Name, &t.Country, &t.FollowersCount, &t.CreatedAt); err != nil {
+		row := database.DB.QueryRow(`SELECT id, name, country, followers_count, created_at, is_private FROM teams WHERE id = $1`, id)
+		if err := row.Scan(&t.ID, &t.Name, &t.Country, &t.FollowersCount, &t.CreatedAt, &t.IsPrivate); err != nil {
 			if err == sql.ErrNoRows {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
 				return
@@ -98,6 +208,68 @@ func GetTeamByID(c *gin.Context) {
 			}
 			folRows.Close()
 		}
+
+		// managers, members, sponsors
+		mgrRows, _ := database.DB.Query(`SELECT user_id::text FROM team_managers WHERE team_id = $1`, t.ID)
+		if mgrRows != nil {
+			for mgrRows.Next() {
+				var u string
+				mgrRows.Scan(&u)
+				t.Managers = append(t.Managers, u)
+			}
+			mgrRows.Close()
+		}
+		memRows, _ := database.DB.Query(`SELECT user_id::text FROM team_members WHERE team_id = $1`, t.ID)
+		if memRows != nil {
+			for memRows.Next() {
+				var u string
+				memRows.Scan(&u)
+				t.Members = append(t.Members, u)
+			}
+			memRows.Close()
+		}
+		sponRows, _ := database.DB.Query(`SELECT user_id::text FROM team_sponsors WHERE team_id = $1`, t.ID)
+		if sponRows != nil {
+			for sponRows.Next() {
+				var u string
+				sponRows.Scan(&u)
+				t.Sponsors = append(t.Sponsors, u)
+			}
+			sponRows.Close()
+		}
+
+		// enforce visibility
+		if t.IsPrivate {
+			allowed := false
+			if currentUserRole == "admin" {
+				allowed = true
+			}
+			if currentUserID != "" {
+				for _, u := range t.Members {
+					if u == currentUserID {
+						allowed = true
+						break
+					}
+				}
+				for _, u := range t.Managers {
+					if u == currentUserID {
+						allowed = true
+						break
+					}
+				}
+				for _, u := range t.Sponsors {
+					if u == currentUserID {
+						allowed = true
+						break
+					}
+				}
+			}
+			if !allowed {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Team is private"})
+				return
+			}
+		}
+
 		c.JSON(http.StatusOK, t)
 		return
 	}
@@ -129,7 +301,7 @@ func CreateTeam(c *gin.Context) {
 	team.Followers = []string{}
 	team.FollowersCount = 0
 	if database.DB != nil {
-		_, err := database.DB.Exec(`INSERT INTO teams (id, name, country, followers_count, created_at) VALUES ($1,$2,$3,$4,$5)`, team.ID, team.Name, team.Country, team.FollowersCount, team.CreatedAt)
+		_, err := database.DB.Exec(`INSERT INTO teams (id, name, country, is_private, followers_count, created_at) VALUES ($1,$2,$3,$4,$5,$6)`, team.ID, team.Name, team.Country, team.IsPrivate, team.FollowersCount, team.CreatedAt)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -137,6 +309,16 @@ func CreateTeam(c *gin.Context) {
 		// insert drivers
 		for _, d := range team.Drivers {
 			_, _ = database.DB.Exec(`INSERT INTO team_drivers (team_id, driver_name) VALUES ($1,$2) ON CONFLICT DO NOTHING`, team.ID, d)
+		}
+		// insert managers, members, sponsors
+		for _, m := range team.Managers {
+			_, _ = database.DB.Exec(`INSERT INTO team_managers (team_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, team.ID, m)
+		}
+		for _, m := range team.Members {
+			_, _ = database.DB.Exec(`INSERT INTO team_members (team_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, team.ID, m)
+		}
+		for _, s := range team.Sponsors {
+			_, _ = database.DB.Exec(`INSERT INTO team_sponsors (team_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, team.ID, s)
 		}
 		c.JSON(http.StatusCreated, team)
 		return
@@ -163,8 +345,8 @@ func UpdateTeam(c *gin.Context) {
 	defer database.Mu.Unlock()
 
 	if database.DB != nil {
-		// update core fields
-		res, err := database.DB.Exec(`UPDATE teams SET name=$1, country=$2 WHERE id=$3`, updated.Name, updated.Country, id)
+		// update core fields including privacy
+		res, err := database.DB.Exec(`UPDATE teams SET name=$1, country=$2, is_private=$3 WHERE id=$4`, updated.Name, updated.Country, updated.IsPrivate, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -178,6 +360,19 @@ func UpdateTeam(c *gin.Context) {
 		_, _ = database.DB.Exec(`DELETE FROM team_drivers WHERE team_id = $1`, id)
 		for _, d := range updated.Drivers {
 			_, _ = database.DB.Exec(`INSERT INTO team_drivers (team_id, driver_name) VALUES ($1,$2) ON CONFLICT DO NOTHING`, id, d)
+		}
+		// replace managers/members/sponsors
+		_, _ = database.DB.Exec(`DELETE FROM team_managers WHERE team_id = $1`, id)
+		for _, m := range updated.Managers {
+			_, _ = database.DB.Exec(`INSERT INTO team_managers (team_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, id, m)
+		}
+		_, _ = database.DB.Exec(`DELETE FROM team_members WHERE team_id = $1`, id)
+		for _, m := range updated.Members {
+			_, _ = database.DB.Exec(`INSERT INTO team_members (team_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, id, m)
+		}
+		_, _ = database.DB.Exec(`DELETE FROM team_sponsors WHERE team_id = $1`, id)
+		for _, s := range updated.Sponsors {
+			_, _ = database.DB.Exec(`INSERT INTO team_sponsors (team_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, id, s)
 		}
 		// return updated team
 		var t models.Team

@@ -29,17 +29,12 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Create user struct
-	// Use provided role or default to "viewer"
-	role := req.Role
-	if role == "" {
-		role = "viewer"
-	}
+	// Create user struct (new registrations always start as viewer)
 	newUser := models.User{
 		ID:           uuid.New().String(),
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
-		Role:         role,
+		Role:         "viewer",
 		Name:         req.Name,
 		CreatedAt:    time.Now(),
 	}

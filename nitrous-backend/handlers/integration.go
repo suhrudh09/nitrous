@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 var externalHTTPClient = &http.Client{
@@ -111,6 +115,15 @@ func syncJolpicaCalendarAndResults() error {
 		fresh = append(fresh, event)
 	}
 
+	if database.DB != nil {
+		if err := persistJolpicaToPostgres(fresh, winnerByRound); err != nil {
+			log.Printf("jolpica postgres sync failed, using in-memory merge: %v", err)
+		} else {
+			log.Printf("jolpica sync complete: upserted %d events in postgres", len(fresh))
+			return nil
+		}
+	}
+
 	database.Mu.Lock()
 	preserved := make([]models.Event, 0, len(database.Events))
 	for _, ev := range database.Events {
@@ -123,6 +136,169 @@ func syncJolpicaCalendarAndResults() error {
 
 	log.Printf("jolpica sync complete: merged %d events", len(fresh))
 	return nil
+}
+
+func persistJolpicaToPostgres(events []models.Event, winnerByRound map[string]string) error {
+	providerID, err := ensureExternalProviderID(database.DB, "jolpica", "Jolpica F1 API", config.AppConfig.JolpicaBaseURL)
+	if err != nil {
+		return err
+	}
+
+	datasetID, err := ensureExternalDatasetID(database.DB, providerID, "season_calendar", "event", "Current season race calendar and latest winner metadata")
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	externalIDs := make([]string, 0, len(events))
+	maxOccurredAt := time.Time{}
+
+	for _, ev := range events {
+		externalID := ev.ID
+		externalIDs = append(externalIDs, externalID)
+		if ev.Date.After(maxOccurredAt) {
+			maxOccurredAt = ev.Date
+		}
+
+		winner := ""
+		round := strings.TrimPrefix(externalID, "jolpica-race-")
+		if v, ok := winnerByRound[round]; ok {
+			winner = v
+		}
+
+		state := "scheduled"
+		if ev.IsLive {
+			state = "live"
+		} else if ev.Date.Before(now) {
+			state = "completed"
+		}
+
+		normalized := map[string]interface{}{
+			"event_id":  ev.ID,
+			"title":     ev.Title,
+			"location":  ev.Location,
+			"date":      ev.Date.UTC().Format(time.RFC3339),
+			"time":      ev.Time,
+			"is_live":   ev.IsLive,
+			"category":  ev.Category,
+			"winner":    winner,
+			"provider":  "jolpica",
+			"synced_at": now.Format(time.RFC3339),
+		}
+
+		raw := map[string]interface{}{
+			"winner": winner,
+			"event":  normalized,
+		}
+
+		normalizedJSON, err := json.Marshal(normalized)
+		if err != nil {
+			return err
+		}
+		rawJSON, err := json.Marshal(raw)
+		if err != nil {
+			return err
+		}
+
+		_, err = database.DB.Exec(`
+			INSERT INTO external_records (
+				id, dataset_id, external_id, title, status, occurred_at,
+				source_updated_at, fetched_at, normalized_data, raw_data, is_deleted, created_at, updated_at
+			) VALUES (
+				gen_random_uuid(), $1, $2, $3, $4, $5,
+				$6, NOW(), $7::jsonb, $8::jsonb, FALSE, NOW(), NOW()
+			)
+			ON CONFLICT (dataset_id, external_id) DO UPDATE SET
+				title = EXCLUDED.title,
+				status = EXCLUDED.status,
+				occurred_at = EXCLUDED.occurred_at,
+				source_updated_at = EXCLUDED.source_updated_at,
+				fetched_at = NOW(),
+				normalized_data = EXCLUDED.normalized_data,
+				raw_data = EXCLUDED.raw_data,
+				is_deleted = FALSE,
+				updated_at = NOW()
+		`, datasetID, externalID, ev.Title, state, ev.Date, now, string(normalizedJSON), string(rawJSON))
+		if err != nil {
+			return err
+		}
+
+		eventUUID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("nitrous:jolpica:"+externalID)).String()
+		_, err = database.DB.Exec(`
+			INSERT INTO events (id, title, location, date, time, is_live, category, thumbnail_url, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+			ON CONFLICT (id) DO UPDATE SET
+				title = EXCLUDED.title,
+				location = EXCLUDED.location,
+				date = EXCLUDED.date,
+				time = EXCLUDED.time,
+				is_live = EXCLUDED.is_live,
+				category = EXCLUDED.category,
+				thumbnail_url = EXCLUDED.thumbnail_url
+		`, eventUUID, ev.Title, ev.Location, ev.Date, ev.Time, ev.IsLive, ev.Category, ev.ThumbnailURL)
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(externalIDs) > 0 {
+		_, err = database.DB.Exec(`
+			UPDATE external_records
+			SET is_deleted = TRUE, updated_at = NOW()
+			WHERE dataset_id = $1
+			  AND external_id <> ALL($2)
+		`, datasetID, pq.Array(externalIDs))
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = database.DB.Exec(`
+		INSERT INTO external_sync_checkpoints (dataset_id, cursor, watermark_time, last_success_at, metadata, updated_at)
+		VALUES ($1, NULL, $2, NOW(), '{}'::jsonb, NOW())
+		ON CONFLICT (dataset_id) DO UPDATE SET
+			watermark_time = EXCLUDED.watermark_time,
+			last_success_at = EXCLUDED.last_success_at,
+			updated_at = NOW()
+	`, datasetID, maxOccurredAt)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ensureExternalProviderID(db *sql.DB, code, name, baseURL string) (string, error) {
+	var id string
+	err := db.QueryRow(`
+		INSERT INTO external_providers (id, code, name, base_url, is_enabled, created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, TRUE, NOW(), NOW())
+		ON CONFLICT (code) DO UPDATE SET
+			name = EXCLUDED.name,
+			base_url = EXCLUDED.base_url,
+			updated_at = NOW()
+		RETURNING id
+	`, code, name, strings.TrimSpace(baseURL)).Scan(&id)
+	return id, err
+}
+
+func ensureExternalDatasetID(db *sql.DB, providerID, datasetKey, entityType, description string) (string, error) {
+	var id string
+	err := db.QueryRow(`
+		INSERT INTO external_datasets (
+			id, provider_id, dataset_key, entity_type, description,
+			sync_mode, refresh_interval_seconds, retention_days, is_enabled, created_at, updated_at
+		) VALUES (
+			gen_random_uuid(), $1, $2, $3, $4,
+			'poll', 86400, 3650, TRUE, NOW(), NOW()
+		)
+		ON CONFLICT (provider_id, dataset_key) DO UPDATE SET
+			entity_type = EXCLUDED.entity_type,
+			description = EXCLUDED.description,
+			updated_at = NOW()
+		RETURNING id
+	`, providerID, datasetKey, entityType, description).Scan(&id)
+	return id, err
 }
 
 func syncSportsDBTeams() error {
@@ -153,10 +329,25 @@ func syncSportsDBTeams() error {
 				continue
 			}
 			id := "sportsdb-" + strings.TrimSpace(t.IDTeam)
+
+			// attempt to fetch roster/players for the team from SportsDB
+			drivers := []string{}
+			playersEndpoint := fmt.Sprintf("%s/%s/lookup_all_players.php?id=%s", base, key, strings.TrimSpace(t.IDTeam))
+			var pResp sportsDBPlayersResponse
+			if err := fetchJSON(playersEndpoint, &pResp); err == nil {
+				for _, p := range pResp.Player {
+					name := strings.TrimSpace(p.StrPlayer)
+					if name != "" {
+						drivers = append(drivers, name)
+					}
+				}
+			}
+
 			collected[id] = models.Team{
 				ID:             id,
 				Name:           strings.TrimSpace(t.StrTeam),
 				Country:        strings.TrimSpace(t.StrCountry),
+				Drivers:        drivers,
 				Followers:      []string{},
 				FollowersCount: 0,
 				CreatedAt:      time.Now(),
@@ -166,6 +357,15 @@ func syncSportsDBTeams() error {
 
 	if len(collected) == 0 {
 		return nil
+	}
+
+	if database.DB != nil {
+		if err := persistSportsDBTeamsToPostgres(collected); err != nil {
+			log.Printf("sportsdb postgres sync failed, using in-memory merge: %v", err)
+		} else {
+			log.Printf("sportsdb sync complete: upserted %d teams in postgres", len(collected))
+			return nil
+		}
 	}
 
 	database.Mu.Lock()
@@ -197,7 +397,251 @@ func syncSportsDBTeams() error {
 	return nil
 }
 
+func persistSportsDBTeamsToPostgres(collected map[string]models.Team) error {
+	providerID, err := ensureExternalProviderID(database.DB, "sportsdb", "The Sports DB", config.AppConfig.SportsDBBaseURL)
+	if err != nil {
+		return err
+	}
+
+	datasetID, err := ensureExternalDatasetID(database.DB, providerID, "teams_catalog", "team", "Team metadata aggregated from league endpoints")
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	externalIDs := make([]string, 0, len(collected))
+	teams := make([]models.Team, 0, len(collected))
+	for externalID, team := range collected {
+		externalIDs = append(externalIDs, externalID)
+		teams = append(teams, team)
+	}
+	sort.Slice(teams, func(i, j int) bool {
+		return strings.ToLower(teams[i].Name) < strings.ToLower(teams[j].Name)
+	})
+
+	for _, team := range teams {
+		externalID := team.ID
+		normalized := map[string]interface{}{
+			"team_id":   team.ID,
+			"name":      team.Name,
+			"country":   team.Country,
+			"provider":  "sportsdb",
+			"synced_at": now.Format(time.RFC3339),
+		}
+
+		raw := map[string]interface{}{
+			"team": normalized,
+		}
+
+		normalizedJSON, err := json.Marshal(normalized)
+		if err != nil {
+			return err
+		}
+		rawJSON, err := json.Marshal(raw)
+		if err != nil {
+			return err
+		}
+
+		_, err = database.DB.Exec(`
+			INSERT INTO external_records (
+				id, dataset_id, external_id, title, status, occurred_at,
+				source_updated_at, fetched_at, normalized_data, raw_data, is_deleted, created_at, updated_at
+			) VALUES (
+				gen_random_uuid(), $1, $2, $3, 'active', NULL,
+				$4, NOW(), $5::jsonb, $6::jsonb, FALSE, NOW(), NOW()
+			)
+			ON CONFLICT (dataset_id, external_id) DO UPDATE SET
+				title = EXCLUDED.title,
+				status = EXCLUDED.status,
+				source_updated_at = EXCLUDED.source_updated_at,
+				fetched_at = NOW(),
+				normalized_data = EXCLUDED.normalized_data,
+				raw_data = EXCLUDED.raw_data,
+				is_deleted = FALSE,
+				updated_at = NOW()
+		`, datasetID, externalID, team.Name, now, string(normalizedJSON), string(rawJSON))
+		if err != nil {
+			return err
+		}
+
+		teamUUID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("nitrous:sportsdb:"+externalID)).String()
+		_, err = database.DB.Exec(`
+			INSERT INTO teams (id, name, country, followers_count, created_at)
+			VALUES ($1, $2, $3, 0, NOW())
+			ON CONFLICT (id) DO UPDATE SET
+				name = EXCLUDED.name,
+				country = EXCLUDED.country
+		`, teamUUID, team.Name, team.Country)
+		if err != nil {
+			return err
+		}
+
+		// replace drivers for this team
+		_, _ = database.DB.Exec(`DELETE FROM team_drivers WHERE team_id = $1`, teamUUID)
+		for _, d := range team.Drivers {
+			name := strings.TrimSpace(d)
+			if name == "" {
+				continue
+			}
+			_, _ = database.DB.Exec(`INSERT INTO team_drivers (team_id, driver_name) VALUES ($1,$2) ON CONFLICT DO NOTHING`, teamUUID, name)
+		}
+	}
+
+	if len(externalIDs) > 0 {
+		_, err = database.DB.Exec(`
+			UPDATE external_records
+			SET is_deleted = TRUE, updated_at = NOW()
+			WHERE dataset_id = $1
+			  AND external_id <> ALL($2)
+		`, datasetID, pq.Array(externalIDs))
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = database.DB.Exec(`
+		INSERT INTO external_sync_checkpoints (dataset_id, cursor, watermark_time, last_success_at, metadata, updated_at)
+		VALUES ($1, NULL, $2, NOW(), '{}'::jsonb, NOW())
+		ON CONFLICT (dataset_id) DO UPDATE SET
+			watermark_time = EXCLUDED.watermark_time,
+			last_success_at = EXCLUDED.last_success_at,
+			updated_at = NOW()
+	`, datasetID, now)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// persistOpenF1StreamMetadataToPostgres materializes stable OpenF1 session metadata to the streams table.
+func persistOpenF1StreamMetadataToPostgres(session openF1Session, isLive bool, leader, currentSpeed string, viewers int) error {
+	streamID := "openf1-live"
+	sessionKey := session.SessionKey
+	startedAt := parseRFC3339OrZero(session.DateStart)
+	endedAt := parseRFC3339OrZero(session.DateEnd)
+
+	now := time.Now().UTC()
+
+	// Only save the final race result (skip practice/qualifying sessions that already ended)
+	// If session is not active and started more than 1 day ago, don't update
+	if !isLive && !startedAt.IsZero() && now.Sub(startedAt) > 24*time.Hour {
+		// Session already archived; only insert if it doesn't exist
+		var exists bool
+		err := database.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM streams WHERE id = $1)`, streamID).Scan(&exists)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+	}
+
+	metadata := map[string]interface{}{
+		"session_key":  sessionKey,
+		"session_name": session.SessionName,
+		"country":      session.CountryName,
+		"circuit":      session.CircuitShortName,
+		"date_start":   session.DateStart,
+		"date_end":     session.DateEnd,
+		"provider":     "openf1",
+		"synced_at":    now.Format(time.RFC3339),
+	}
+
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+
+	subtitle := fmt.Sprintf("%s - %s", session.SessionName, strings.TrimSpace(session.CircuitShortName))
+	if subtitle == " - " {
+		subtitle = "Live timing via OpenF1"
+	}
+
+	_, err = database.DB.Exec(`
+		INSERT INTO streams (
+			id, session_key, title, subtitle, category, is_live,
+			current_leader, current_speed, viewers, started_at, ended_at, metadata, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, 'motorsport', $5,
+			$6, $7, $8, $9, $10, $11::jsonb, NOW(), NOW()
+		)
+		ON CONFLICT (id) DO UPDATE SET
+			session_key = EXCLUDED.session_key,
+			subtitle = EXCLUDED.subtitle,
+			is_live = EXCLUDED.is_live,
+			current_leader = EXCLUDED.current_leader,
+			current_speed = EXCLUDED.current_speed,
+			viewers = EXCLUDED.viewers,
+			ended_at = EXCLUDED.ended_at,
+			metadata = EXCLUDED.metadata,
+			updated_at = NOW()
+	`, streamID, sessionKey, "Formula 1 Live Timing", subtitle, isLive, leader, currentSpeed, viewers, startedAt, endedAt, string(metadataJSON))
+
+	return err
+}
+
+// persistOpenF1SnapshotToPostgres saves high-frequency telemetry as a time-series snapshot.
+// This captures speed, RPM, gear, and telemetry data without bloating the main records table.
+func persistOpenF1SnapshotToPostgres(sessionKey int, leader string, speed, rpm, gear int, gForce float64) error {
+	providerID, err := ensureExternalProviderID(database.DB, "openf1", "OpenF1 Live Telemetry", config.AppConfig.OpenF1BaseURL)
+	if err != nil {
+		return err
+	}
+
+	datasetID, err := ensureExternalDatasetID(database.DB, providerID, "live_telemetry", "telemetry", "High-frequency telemetry from active race sessions")
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	externalID := fmt.Sprintf("session-%d-telemetry", sessionKey)
+
+	// Upsert or create a record for this session's telemetry if it doesn't exist
+	var recordID string
+	err = database.DB.QueryRow(`
+		INSERT INTO external_records (
+			id, dataset_id, external_id, title, status, occurred_at,
+			source_updated_at, fetched_at, normalized_data, raw_data, is_deleted, created_at, updated_at
+		) VALUES (
+			gen_random_uuid(), $1, $2, $3, 'active', $4,
+			$5, NOW(), '{}'::jsonb, '{}'::jsonb, FALSE, NOW(), NOW()
+		)
+		ON CONFLICT (dataset_id, external_id) DO UPDATE SET
+			fetched_at = NOW(),
+			updated_at = NOW()
+		RETURNING id
+	`, datasetID, externalID, fmt.Sprintf("Live session %d", sessionKey), now, now).Scan(&recordID)
+	if err != nil {
+		return err
+	}
+
+	// Insert the high-frequency telemetry snapshot
+	payload := map[string]interface{}{
+		"session_key":    sessionKey,
+		"current_leader": leader,
+		"speed_kph":      speed,
+		"rpm":            rpm,
+		"gear":           gear,
+		"g_force":        gForce,
+		"captured_at":    now.Format(time.RFC3339),
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	_, err = database.DB.Exec(`
+		INSERT INTO external_record_snapshots (record_id, captured_at, payload)
+		VALUES ($1, $2, $3::jsonb)
+	`, recordID, now, string(payloadJSON))
+
+	return err
+}
+
 func syncOpenF1LiveData() (bool, error) {
+
 	session, ok, err := fetchOpenF1Session()
 	if err != nil {
 		return false, err
@@ -219,6 +663,22 @@ func syncOpenF1LiveData() (bool, error) {
 		viewers = 18000 + (speed % 4000)
 	}
 
+	// Persist to database if available
+	if database.DB != nil {
+		gForce := math.Min(4.5, float64(speed)/120.0)
+
+		// Materialize stable stream metadata
+		if err := persistOpenF1StreamMetadataToPostgres(session, active, leader, currentSpeed, viewers); err != nil {
+			log.Printf("openf1 stream metadata postgres sync failed: %v", err)
+		}
+
+		// Save high-frequency telemetry snapshot (even if 0, for complete historical record)
+		if err := persistOpenF1SnapshotToPostgres(session.SessionKey, leader, speed, rpm, gear, gForce); err != nil {
+			log.Printf("openf1 telemetry snapshot postgres sync failed: %v", err)
+		}
+	}
+
+	// Also update in-memory streams for backward compatibility and real-time WebSocket delivery
 	streamID := updateOpenF1Stream(session, active, subtitle, currentSpeed, leader, viewers)
 	if active {
 		gForce := math.Min(4.5, float64(speed)/120.0)
@@ -678,6 +1138,13 @@ type sportsDBTeamsResponse struct {
 	} `json:"teams"`
 }
 
+type sportsDBPlayersResponse struct {
+	Player []struct {
+		IDPlayer  string `json:"idPlayer"`
+		StrPlayer string `json:"strPlayer"`
+	} `json:"player"`
+}
+
 type openF1Session struct {
 	SessionKey       int    `json:"session_key"`
 	SessionName      string `json:"session_name"`
@@ -702,7 +1169,7 @@ type openF1CarData struct {
 }
 
 type openF1Driver struct {
-	DriverNumber int    `json:"driver_number"`
+	DriverNumber  int    `json:"driver_number"`
 	BroadcastName string `json:"broadcast_name"`
 	FullName      string `json:"full_name"`
 	NameAcronym   string `json:"name_acronym"`
