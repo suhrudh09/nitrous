@@ -142,6 +142,7 @@ export interface User {
   id: string
   email: string
   name: string
+  role: 'viewer' | 'participant' | 'manager' | 'sponsor'
   createdAt: string
 }
 

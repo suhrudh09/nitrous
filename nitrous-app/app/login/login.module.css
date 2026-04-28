@@ -508,3 +508,61 @@
   .rightPanel { padding: 40px 24px; }
   .formBox { padding: 28px 24px; }
 }
+
+/* Role Selection */
+.roleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.roleOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.roleOption:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--cyan-dim);
+}
+
+.roleOptionActive {
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.15);
+}
+
+.roleIcon {
+  font-size: 24px;
+}
+
+.roleLabel {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.roleDesc {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.3;
+}
+
+@media (max-width: 480px) {
+  .roleGrid {
+    grid-template-columns: 1fr;
+  }
+}

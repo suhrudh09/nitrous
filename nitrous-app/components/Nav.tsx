@@ -7,6 +7,7 @@ interface User {
   name: string
   email: string
   initials: string
+  role: 'viewer' | 'participant' | 'manager' | 'sponsor' | 'admin'
 }
 
 export default function Nav() {
@@ -25,7 +26,7 @@ export default function Nav() {
         const initials = names.length >= 2
           ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
           : names[0].slice(0, 2).toUpperCase()
-        setUser({ name: parsed.name, email: parsed.email, initials })
+        setUser({ name: parsed.name, email: parsed.email, initials, role: parsed.role || 'viewer' })
       }
     } catch {
       // ignore
@@ -128,6 +129,14 @@ export default function Nav() {
                 </Link>
 
                 <div className={styles.dropDivider} />
+
+                {user?.role === 'admin' && (
+                  <Link href="/admin" className={styles.dropItem} onClick={() => setDropdownOpen(false)}>
+                    <span className={styles.dropItemIcon}>⚡</span>
+                    <span>Admin Panel</span>
+                    <span className={styles.dropItemArrow}>→</span>
+                  </Link>
+                )}
 
                 <Link href="/settings" className={styles.dropItem} onClick={() => setDropdownOpen(false)}>
                   <span className={styles.dropItemIcon}>⚙️</span>

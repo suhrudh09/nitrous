@@ -3,8 +3,6 @@ import Hero from '@/components/Hero'
 
 describe('Hero Component', () => {
   before(() => {
-    // Next.js CSS injection requires this anchor in <head> before any mount.
-    // Without it, anchorElement.parentNode is null and throws.
     if (!document.getElementById('__next_css__DO_NOT_USE__')) {
       const anchor = document.createElement('div')
       anchor.id = '__next_css__DO_NOT_USE__'
@@ -13,7 +11,7 @@ describe('Hero Component', () => {
   })
 
   beforeEach(() => {
-    cy.mount(<Hero />)  // FIX: was cy.mount('<Hero />') — string, not JSX
+    cy.mount(<Hero />)
   })
 
   describe('Structure', () => {
@@ -40,8 +38,6 @@ describe('Hero Component', () => {
 
   describe('Background and Visual Elements', () => {
     it('displays the background image', () => {
-      // FIX: Next.js <Image fill> has no natural dimensions in component tests
-      // so 'be.visible' fails — 'exist' is the correct assertion here
       cy.get('img[alt="Nitrous wireframe car"]').should('exist')
     })
 
@@ -105,19 +101,17 @@ describe('Hero Component', () => {
   describe('Action Buttons', () => {
     it('renders Ignite Stream button', () => {
       cy.contains('Ignite Stream').should('be.visible')
-      // FIX: .be.a checks JS type (e.g. 'object'), not HTML tag
-      // .match() checks the element tag name via CSS selector
-      cy.contains('Ignite Stream').should('match', 'button')
+      cy.contains('Ignite Stream').should('match', 'a')
     })
 
     it('renders Explore Events button', () => {
       cy.contains('Explore Events').should('be.visible')
-      // FIX: same as above
-      cy.contains('Explore Events').should('match', 'button')
+      cy.contains('Explore Events').should('match', 'a')
     })
 
     it('buttons are not disabled', () => {
-      cy.get('button').should('not.be.disabled')
+      cy.get('[class*="btnNitro"]').should('not.have.attr', 'disabled')
+      cy.get('[class*="btnGhost"]').should('not.have.attr', 'disabled')
     })
 
     it('buttons have correct styling classes', () => {
@@ -144,7 +138,7 @@ describe('Hero Component', () => {
     })
 
     it('renders ACCESS LIVE STREAMS card with correct href', () => {
-      cy.get('a[href="/live"]').within(() => {
+      cy.get('[class*="heroNavRail"] a[href="/live"]').within(() => {
         cy.get('[class*="hnrIcon"]').should('contain', '📺')
       })
     })

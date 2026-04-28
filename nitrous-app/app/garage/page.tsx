@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Nav from '@/components/Nav'
+import { useCanTune, useUser } from '@/hooks/usePermission'
 import styles from './garage.module.css'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -122,17 +123,32 @@ async function fetchVehicle(make: string, model: string, year: number): Promise<
   }
 }
 
-async function postTune(make: string, model: string, year: number, tuning: TuningKey): Promise<TuneResponse | null> {
+async function postTune(make: string, model: string, year: number, tuning: TuningKey, teamId?: string): Promise<TuneResponse | null> {
   try {
+    const token = localStorage.getItem('nitrous_token')
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    
+    const body: Record<string, string | number> = { make, model, year, tuning }
+    if (teamId) {
+      body.teamId = teamId
+    }
+    
     const res = await fetch(`${GARAGE_API_BASE}/garage/tune`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ make, model, year, tuning }),
+      headers,
+      body: JSON.stringify(body),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}))
+      throw new Error(error.error || `Tuning failed (${res.status})`)
+    }
     return await res.json()
-  } catch {
-    return null
+  } catch (err) {
+    console.error('Tune error:', err)
+    throw err
   }
 }
 
@@ -244,6 +260,12 @@ export default function GaragePage() {
   const [tuning, setTuning] = useState<TuningKey>('stock')
   const [tuneResult, setTuneResult] = useState<TuneResponse | null>(null)
   const [loadingSpec, setLoadingSpec] = useState(false)
+  const [selectedTeam, setSelectedTeam] = useState<string>('')
+  const [tuneError, setTuneError] = useState<string | null>(null)
+
+  // Permission hooks
+  const canTune = useCanTune()
+  const { user } = useUser()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scanRef = useRef<number>(0)
@@ -349,19 +371,30 @@ export default function GaragePage() {
   useEffect(() => {
     if (!spec || tuning === 'stock') {
       setTuneResult(null)
+      setTuneError(null)
       return
     }
 
     let cancelled = false
 
-    postTune(selectedMake, selectedModel, selectedYear, tuning).then(result => {
-      if (!cancelled) setTuneResult(result)
-    })
+    postTune(selectedMake, selectedModel, selectedYear, tuning, selectedTeam || undefined)
+      .then(result => {
+        if (!cancelled) {
+          setTuneResult(result)
+          setTuneError(null)
+        }
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setTuneResult(null)
+          setTuneError(err instanceof Error ? err.message : 'Tuning failed')
+        }
+      })
 
     return () => {
       cancelled = true
     }
-  }, [spec, tuning, selectedMake, selectedModel, selectedYear])
+  }, [spec, tuning, selectedMake, selectedModel, selectedYear, selectedTeam])
 
   const drawGrid = useCallback(() => {
     const canvas = canvasRef.current
@@ -492,12 +525,25 @@ export default function GaragePage() {
     ? 'FETCHING VEHICLE DATA…'
     : specError
       ? `DATA ERROR — ${specError}`
-      : `SYSTEM ONLINE — ${TUNING_LABELS[tuning]}`
+      : tuneError
+        ? `TUNING ERROR — ${tuneError}`
+        : `SYSTEM ONLINE — ${TUNING_LABELS[tuning]}`
+
+  // Show access denied message for non-managers
+  const showAccessDenied = !canTune && user && user.role !== 'admin'
 
   return (
     <>
       <Nav />
       <main className={styles.page}>
+        {/* Role-based access banner */}
+        {showAccessDenied && (
+          <div className={styles.accessBanner}>
+            <span className={styles.accessIcon}>🔒</span>
+            <span>TUNING UNAVAILABLE — You need Manager or Admin role to access vehicle tuning</span>
+          </div>
+        )}
+
         <div className={styles.subHeader}>
           <div className={styles.subHeaderLeft}>
             <span className={styles.breadcrumb}>/ GARAGE</span>
@@ -701,11 +747,25 @@ export default function GaragePage() {
                     className={`${styles.tuningBtn} ${tuning === key ? styles.tuningBtnActive : ''}`}
                     style={tuning === key ? { borderColor: accent, color: accent, background: `${accent}15` } : {}}
                     onClick={() => setTuning(key)}
+                    disabled={!canTune && !showAccessDenied}
                   >
                     {TUNING_LABELS[key]}
                   </button>
                 ))}
               </div>
+              {canTune && (
+                <div className={styles.teamSelector}>
+                  <span className={styles.teamSelectorLabel}>TEAM</span>
+                  <select 
+                    value={selectedTeam} 
+                    onChange={(e) => setSelectedTeam(e.target.value)}
+                  >
+                    <option value="">None</option>
+                    <option value="team-1">Team Alpha</option>
+                    <option value="team-2">Team Beta</option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

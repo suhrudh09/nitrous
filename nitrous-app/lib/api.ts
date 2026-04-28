@@ -116,11 +116,14 @@ export async function getJourneyById(id: string): Promise<Journey> {
 
 export async function bookJourney(
   id: string,
-  token: string
+  token: string,
+  userId?: string
 ): Promise<{ message: string; journey: Journey }> {
+  const body = userId ? { userId } : {}
   return fetchAPI<{ message: string; journey: Journey }>(`/journeys/${id}/book`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
   })
 }
 
@@ -190,6 +193,126 @@ export async function unfollowTeam(
   })
 }
 
+export async function createTeam(
+  data: { name: string; country: string; isPrivate: boolean; drivers?: string[] },
+  token: string
+): Promise<Team> {
+  return fetchAPI<Team>('/teams', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateTeam(
+  id: string,
+  data: { name?: string; country?: string; isPrivate?: boolean; drivers?: string[] },
+  token: string
+): Promise<Team> {
+  return fetchAPI<Team>(`/teams/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteTeam(id: string, token: string): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/teams/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function addTeamManager(
+  teamId: string,
+  userId: string,
+  token: string
+): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/teams/${teamId}/managers`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ userId }),
+  })
+}
+
+export async function removeTeamManager(
+  teamId: string,
+  userId: string,
+  token: string
+): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/teams/${teamId}/managers/${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function addTeamMember(
+  teamId: string,
+  userId: string,
+  token: string
+): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/teams/${teamId}/members`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ userId }),
+  })
+}
+
+export async function removeTeamMember(
+  teamId: string,
+  userId: string,
+  token: string
+): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/teams/${teamId}/members/${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function addTeamSponsor(
+  teamId: string,
+  userId: string,
+  token: string
+): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/teams/${teamId}/sponsors`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ userId }),
+  })
+}
+
+export async function removeTeamSponsor(
+  teamId: string,
+  userId: string,
+  token: string
+): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/teams/${teamId}/sponsors/${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export async function triggerSync(token: string): Promise<{ message: string; results: Record<string, { success: boolean; error?: string }> }> {
+  return fetchAPI<{ message: string; results: Record<string, { success: boolean; error?: string }> }>('/admin/sync', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function updateUserRole(
+  userId: string,
+  role: string,
+  token: string
+): Promise<{ message: string; user: User }> {
+  return fetchAPI<{ message: string; user: User }>(`/admin/users/${userId}/role`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ role }),
+  })
+}
+
 // ── Orders ────────────────────────────────────────────────────────────────────
 
 export async function createOrder(
@@ -241,11 +364,12 @@ export async function getMyOrders(token: string): Promise<Order[]> {
 export async function register(
   email: string,
   password: string,
-  name: string
+  name: string,
+  role: string
 ): Promise<AuthResponse> {
   return fetchAPI<AuthResponse>('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password, name }),
+    body: JSON.stringify({ email, password, name, role }),
   })
 }
 

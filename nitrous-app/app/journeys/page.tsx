@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import Nav from '@/components/Nav'
 import { getJourneys, bookJourney } from '@/lib/api'
+import { useCanBookJourneys, useCanRegisterOthers, useUser } from '@/hooks/usePermission'
 import type { Journey } from '@/types'
 import styles from './journeys.module.css'
 
@@ -26,6 +27,12 @@ export default function JourneysPage() {
   const [error, setError] = useState('')
   const [booking, setBooking] = useState<string | null>(null)
   const [booked, setBooked] = useState<string | null>(null)
+  const [registerForUser, setRegisterForUser] = useState<string>('')
+
+  // Permission hooks
+  const canBook = useCanBookJourneys()
+  const canRegisterOthers = useCanRegisterOthers()
+  const { user } = useUser()
 
   useEffect(() => {
     getJourneys()
@@ -40,9 +47,18 @@ export default function JourneysPage() {
       globalThis.location.href = '/login'
       return
     }
+    
+    // Check if participant trying to self-register
+    if (!canBook && user?.role === 'participant') {
+      alert('Participants cannot register for journeys. Contact your team manager to register.')
+      return
+    }
+    
     setBooking(journeyId)
     try {
-      const result = await bookJourney(journeyId, token)
+      // Managers/admins can register others by passing userId
+      const targetUserId = canRegisterOthers && registerForUser ? registerForUser : undefined
+      const result = await bookJourney(journeyId, token, targetUserId)
       // Update slots locally so UI responds immediately
       setJourneys((prev) =>
         prev.map((j) => (j.id === result.journey.id ? result.journey : j))
@@ -215,7 +231,7 @@ export default function JourneysPage() {
                       cursor: journey.slotsLeft <= 0 ? 'not-allowed' : 'pointer',
                     }}
                     onClick={() => handleBook(journey.id)}
-                    disabled={booking === journey.id || journey.slotsLeft <= 0}
+                    disabled={booking === journey.id || journey.slotsLeft <= 0 || (!canBook && user?.role === 'participant')}
                   >
                     {booked === journey.id
                       ? '✓ BOOKED'
@@ -223,6 +239,10 @@ export default function JourneysPage() {
                       ? 'BOOKING...'
                       : journey.slotsLeft <= 0
                       ? 'SOLD OUT'
+                      : !canBook && user?.role === 'participant'
+                      ? 'CONTACT MANAGER'
+                      : canRegisterOthers
+                      ? 'REGISTER →'
                       : 'BOOK JOURNEY →'}
                   </button>
                 </div>

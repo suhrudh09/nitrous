@@ -1,0 +1,58 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Sizes */
+.sm {
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+.md {
+  padding: 4px 10px;
+  font-size: 10px;
+}
+
+.lg {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+/* Role colors */
+.viewer {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.participant {
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.3);
+}
+
+.manager {
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+}
+
+.sponsor {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+}
+
+.admin {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}

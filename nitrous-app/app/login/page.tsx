@@ -19,7 +19,8 @@ export default function LoginPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    name: ''
+    name: '',
+    role: 'viewer' as 'viewer' | 'participant' | 'manager' | 'sponsor'
   })
 
   // Standardized input handler using the 'name' attribute
@@ -33,7 +34,7 @@ export default function LoginPage() {
     setMode(newMode)
     setError('')
     // Clear sensitive fields when switching modes
-    setFormData({ email: '', password: '', name: '' })
+    setFormData({ email: '', password: '', name: '', role: 'viewer' })
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -51,7 +52,7 @@ export default function LoginPage() {
       const data =
         mode === 'signin'
           ? await login(formData.email, formData.password)
-          : await register(formData.email, formData.password, formData.name)
+          : await register(formData.email, formData.password, formData.name, formData.role)
 
       // Store auth state
       localStorage.setItem('nitrous_token', data.token)
@@ -142,6 +143,31 @@ export default function LoginPage() {
                         onChange={handleInput}
                         required
                       />
+                    </div>
+                  </div>
+                )}
+
+                {mode === 'signup' && (
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.fieldLabel}>SELECT YOUR ROLE</label>
+                    <div className={styles.roleGrid}>
+                      {[
+                        { value: 'viewer', label: 'Viewer', icon: '👁', desc: 'Watch live streams and events' },
+                        { value: 'participant', label: 'Participant', icon: '🏎', desc: 'Join events and track progress' },
+                        { value: 'manager', label: 'Manager', icon: '📊', desc: 'Manage teams and events' },
+                        { value: 'sponsor', label: 'Sponsor', icon: '💎', desc: 'Fund and support events' }
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`${styles.roleOption} ${formData.role === option.value ? styles.roleOptionActive : ''}`}
+                          onClick={() => setFormData(prev => ({ ...prev, role: option.value as typeof prev.role }))}
+                        >
+                          <span className={styles.roleIcon}>{option.icon}</span>
+                          <span className={styles.roleLabel}>{option.label}</span>
+                          <span className={styles.roleDesc}>{option.desc}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}

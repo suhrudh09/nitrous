@@ -16,12 +16,12 @@ import (
 // Register creates a new user account
 func Register(c *gin.Context) {
 	var req models.RegisterRequest
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -30,11 +30,16 @@ func Register(c *gin.Context) {
 	}
 
 	// Create user struct
+	// Use provided role or default to "viewer"
+	role := req.Role
+	if role == "" {
+		role = "viewer"
+	}
 	newUser := models.User{
 		ID:           uuid.New().String(),
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
-		Role:         "user",
+		Role:         role,
 		Name:         req.Name,
 		CreatedAt:    time.Now(),
 	}
@@ -93,12 +98,12 @@ func Register(c *gin.Context) {
 // Login authenticates a user
 func Login(c *gin.Context) {
 	var req models.LoginRequest
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	if database.DB != nil {
 		var u models.User
 		row := database.DB.QueryRow(`SELECT id, email, password_hash, role, name, created_at FROM users WHERE email = $1`, req.Email)

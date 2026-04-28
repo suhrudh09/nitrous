@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import RoleBadge from '@/components/RoleBadge'
 import styles from './settings.module.css'
 
 type Tab = 'profile' | 'notifications' | 'security' | 'preferences'
@@ -12,6 +13,7 @@ interface UserProfile {
   initials: string
   joinedDate: string
   plan: 'FREE' | 'PRO' | 'PLATINUM'
+  role: 'viewer' | 'participant' | 'manager' | 'sponsor' | 'admin'
 }
 
 const tabs: { id: Tab; label: string; icon: string }[] = [
@@ -62,6 +64,7 @@ export default function SettingsPage() {
           initials,
           joinedDate: parsed.joinedDate || 'Jan 2025',
           plan: parsed.plan || 'FREE',
+          role: parsed.role || 'viewer',
         }
         setUser(profile)
         setName(profile.name)
@@ -129,6 +132,7 @@ export default function SettingsPage() {
               </div>
               <div className={styles.profileName}>{user.name}</div>
               <div className={styles.profileEmail}>{user.email}</div>
+              <RoleBadge role={user.role} size="sm" />
               <div
                 className={styles.planBadge}
                 style={{ color: planColors[user.plan], borderColor: `${planColors[user.plan]}66` }}
