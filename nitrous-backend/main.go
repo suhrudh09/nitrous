@@ -127,6 +127,7 @@ func main() {
 			streams.GET("", handlers.GetStreams)
 			streams.GET("/openf1/sessions", handlers.GetOpenF1RecentSessions)
 			streams.GET("/openf1/sessions/:sessionKey/telemetry", handlers.GetOpenF1SessionTelemetry)
+			streams.GET("/openf1/video", handlers.GetOpenF1SessionVideo)
 			streams.GET("/:id", handlers.GetStreamByID)
 			streams.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateStream)
 			streams.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateStream)

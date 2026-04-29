@@ -19,6 +19,7 @@ type Config struct {
 	OpenF1BaseURL          string
 	SportsDBBaseURL        string
 	SportsDBAPIKey         string
+	YouTubeAPIKey          string
 	JolpicaSyncInterval    string
 	OpenF1ActiveInterval   string
 	OpenF1IdleInterval     string
@@ -46,6 +47,7 @@ func LoadConfig() {
 		OpenF1BaseURL:          getEnv("OPENF1_BASE_URL", "https://api.openf1.org/v1"),
 		SportsDBBaseURL:        getEnv("SPORTSDB_BASE_URL", "https://www.thesportsdb.com/api/v1/json"),
 		SportsDBAPIKey:         getEnv("SPORTSDB_API_KEY", "123"),
+		YouTubeAPIKey:          getEnv("YOUTUBE_API_KEY", ""),
 		JolpicaSyncInterval:    getEnv("JOLPICA_SYNC_INTERVAL", "24h"),
 		OpenF1ActiveInterval:   getEnv("OPENF1_ACTIVE_INTERVAL", "5s"),
 		OpenF1IdleInterval:     getEnv("OPENF1_IDLE_INTERVAL", "1h"),
