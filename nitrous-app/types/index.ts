@@ -108,6 +108,17 @@ export interface OpenF1SessionTelemetry {
   captured_at: string
 }
 
+export interface OpenF1VideoResult {
+  videoId: string
+  title: string
+  channelTitle: string
+  embedUrl: string
+  watchUrl: string
+  query: string
+  mode: 'live' | 'recent'
+  sessionKey: number
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 export interface Team {
@@ -168,30 +179,4 @@ export interface Order {
   total: number
   status: 'pending' | 'confirmed' | 'shipped'
   createdAt: string
-}
-
-// ── Payment ───────────────────────────────────────────────────────────────────
-
-export interface PaymentIntent {
-  clientSecret: string
-  paymentId: string
-  amount: number
-  currency: string
-}
-
-export interface PaymentMethod {
-  id: string
-  type: 'card'
-  card: {
-    brand: string
-    last4: string
-    expMonth: number
-    expYear: number
-  }
-}
-
-export interface PaymentState {
-  status: 'idle' | 'processing' | 'success' | 'failed'
-  error?: string
-  paymentId?: string
 }

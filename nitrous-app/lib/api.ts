@@ -6,12 +6,12 @@ import type {
   Stream,
   OpenF1RecentSession,
   OpenF1SessionTelemetry,
+  OpenF1VideoResult,
   Team,
   User,
   AuthResponse,
   Order,
   OrderItem,
-  PaymentIntent,
 } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'
@@ -161,6 +161,17 @@ export async function getOpenF1SessionTelemetry(
   sessionKey: number
 ): Promise<OpenF1SessionTelemetry> {
   return fetchAPI<OpenF1SessionTelemetry>(`/streams/openf1/sessions/${sessionKey}/telemetry`)
+}
+
+export async function getOpenF1SessionVideo(params: {
+  mode: 'live' | 'recent'
+  sessionKey?: number
+}): Promise<OpenF1VideoResult> {
+  const query = new URLSearchParams({ mode: params.mode })
+  if (typeof params.sessionKey === 'number') {
+    query.set('sessionKey', String(params.sessionKey))
+  }
+  return fetchAPI<OpenF1VideoResult>(`/streams/openf1/video?${query.toString()}`)
 }
 
 // ── Teams ─────────────────────────────────────────────────────────────────────
@@ -374,53 +385,6 @@ export async function getMyOrders(token: string): Promise<Order[]> {
   return data.orders ?? []
 }
 
-// ── Payments ─────────────────────────────────────────────────────────────────
-
-export async function createPaymentIntent(
-  amount: number,
-  referenceType: string,
-  referenceId: string,
-  token: string,
-  currency = 'usd',
-  description = ''
-): Promise<PaymentIntent> {
-  const payload = {
-    amount,
-    currency,
-    description,
-    referenceType,
-    referenceId,
-  }
-
-  return fetchAPI<PaymentIntent>('/payments/create-intent', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function confirmPayment(
-  paymentId: string,
-  token: string
-): Promise<{ message: string; status: string }> {
-  return fetchAPI<{ message: string; status: string }>(`/payments/${paymentId}/confirm`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-  })
-}
-
-export async function getPaymentStatus(
-  paymentId: string,
-  token: string
-): Promise<{ paymentId: string; status: string; amount: number }> {
-  return fetchAPI<{ paymentId: string; status: string; amount: number }>(
-    `/payments/${paymentId}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  )
-}
-
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function register(
@@ -458,30 +422,4 @@ export async function purchasePass(
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
-}
-
-// ── Passes ───────────────────────────────────────────────────────────────────
-
-export interface UserPass {
-  id: string
-  tier: string
-  tierColor: string
-  event: string
-  location: string
-  date: string
-  category: string
-  price: number
-  perks: string[]
-  spotsLeft: number
-  totalSpots: number
-  badge: string | null
-  purchaseId: string
-  createdAt: string
-}
-
-export async function getMyPasses(token: string): Promise<UserPass[]> {
-  const data = await fetchAPI<{ purchases: UserPass[]; count: number }>('/passes', {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return data.purchases ?? []
 }
