@@ -108,6 +108,17 @@ export interface OpenF1SessionTelemetry {
   captured_at: string
 }
 
+export interface OpenF1VideoResult {
+  videoId: string
+  title: string
+  channelTitle: string
+  embedUrl: string
+  watchUrl: string
+  query: string
+  mode: 'live' | 'recent'
+  sessionKey: number
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 export interface Team {

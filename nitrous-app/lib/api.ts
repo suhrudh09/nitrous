@@ -6,6 +6,7 @@ import type {
   Stream,
   OpenF1RecentSession,
   OpenF1SessionTelemetry,
+  OpenF1VideoResult,
   Team,
   User,
   AuthResponse,
@@ -160,6 +161,17 @@ export async function getOpenF1SessionTelemetry(
   sessionKey: number
 ): Promise<OpenF1SessionTelemetry> {
   return fetchAPI<OpenF1SessionTelemetry>(`/streams/openf1/sessions/${sessionKey}/telemetry`)
+}
+
+export async function getOpenF1SessionVideo(params: {
+  mode: 'live' | 'recent'
+  sessionKey?: number
+}): Promise<OpenF1VideoResult> {
+  const query = new URLSearchParams({ mode: params.mode })
+  if (typeof params.sessionKey === 'number') {
+    query.set('sessionKey', String(params.sessionKey))
+  }
+  return fetchAPI<OpenF1VideoResult>(`/streams/openf1/video?${query.toString()}`)
 }
 
 // ── Teams ─────────────────────────────────────────────────────────────────────

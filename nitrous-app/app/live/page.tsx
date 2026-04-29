@@ -2,9 +2,11 @@
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import Nav from '@/components/Nav'
-import { getEvents, getOpenF1RecentSessions, getOpenF1SessionTelemetry, getStreams } from '@/lib/api'
+import { getEvents, getOpenF1RecentSessions, getOpenF1SessionTelemetry, getOpenF1SessionVideo, getStreams } from '@/lib/api'
 import type { Event, OpenF1RecentSession, OpenF1SessionTelemetry, Stream, StreamTelemetry } from '@/types'
 import styles from './live.module.css'
+
+const DEFAULT_TELEMETRY_EMBED_URL = 'https://www.youtube.com/embed/DSWEkMEbvoU?si=hIucNp1T_ltzEEh-'
 
 export default function LivePage() {
   const [streams, setStreams] = useState<Stream[]>([])
@@ -19,6 +21,8 @@ export default function LivePage() {
   const [error, setError] = useState('')
   const [playbackState, setPlaybackState] = useState<'loading' | 'playing' | 'paused' | 'error'>('loading')
   const [playbackMessage, setPlaybackMessage] = useState('')
+  const [telemetryEmbedUrl, setTelemetryEmbedUrl] = useState<string | null>(null)
+  const [telemetryEmbedLoading, setTelemetryEmbedLoading] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
   const pickDefaultStreamId = (data: Stream[]): string => {
@@ -138,6 +142,20 @@ export default function LivePage() {
     }).format(eventDate)
   }
 
+  const formatUpcomingDate = (event: Event): string => {
+    const eventDate = parseEventDateTime(event)
+    if (!eventDate) return 'TBA'
+
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }).format(eventDate)
+  }
+
   // ── Fetch streams from API on mount ────────────────────────────────────────
   useEffect(() => {
     Promise.all([getStreams(), getOpenF1RecentSessions(8), getEvents()])
@@ -187,7 +205,26 @@ export default function LivePage() {
   }, [])
 
   useEffect(() => {
-    if (!featured?.playbackUrl) {
+    const selectedStream =
+      streams.find((s) => s.id === active) ??
+      streams.find((s) => s.id === 'openf1-live') ??
+      streams[0]
+
+    if (selectedStream?.id === 'openf1-live') {
+      if (selectedStream.isLive) {
+        setPlaybackState('playing')
+        setPlaybackMessage('Live telemetry feed active')
+      } else if (upcomingEvents[0]) {
+        setPlaybackState('paused')
+        setPlaybackMessage(`Next telemetry target: ${upcomingEvents[0].title}`)
+      } else {
+        setPlaybackState('paused')
+        setPlaybackMessage('Awaiting next race telemetry')
+      }
+      return
+    }
+
+    if (!selectedStream?.playbackUrl) {
       setPlaybackState('error')
       setPlaybackMessage('No playback source available')
       return
@@ -198,12 +235,12 @@ export default function LivePage() {
 
     setPlaybackState('paused')
     setPlaybackMessage('Selected feed. Press play to start playback.')
-  }, [active, streams])
+  }, [active, streams, upcomingEvents])
 
   // ── WebSocket — real-time telemetry updates ────────────────────────────────
   useEffect(() => {
     const wsUrl =
-      process.env.NEXT_PUBLIC_WS_URL || '<iframe width="560" height="315" src="https://www.youtube.com/embed/YA1ruaeoZZY?si=8sEKuWUP94CoIG4h" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>ws://localhost:8080/api/streams/ws'
+      process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/api/streams/ws'
     const ws = new WebSocket(wsUrl)
 
     ws.onmessage = (e) => {
@@ -250,18 +287,77 @@ export default function LivePage() {
     }
   }, [])
 
-  const featured = streams.find((s) => s.id === active) ?? streams[0]
+  const nextUpcomingEvent = upcomingEvents[0] ?? null
+  const fallbackTelemetryStream: Stream | null = nextUpcomingEvent
+    ? {
+        id: 'openf1-live',
+        eventId: nextUpcomingEvent.id,
+        title: 'OpenF1 Telemetry',
+        subtitle: 'Awaiting next race session',
+        category: 'Telemetry',
+        location: nextUpcomingEvent.location,
+        quality: 'LIVE',
+        viewers: 0,
+        isLive: false,
+        currentLeader: 'Standby',
+        currentSpeed: '0 km/h',
+        color: 'cyan',
+      }
+    : null
+  const featured =
+    streams.find((s) => s.id === active) ??
+    streams.find((s) => s.id === 'openf1-live') ??
+    streams[0] ??
+    fallbackTelemetryStream
   const isOpenF1 = featured?.id === 'openf1-live'
   const selectedRaceSession =
     selectedRaceKey != null
       ? recentRaces.find((race) => race.session_key === selectedRaceKey) ?? null
       : null
+  const liveStreams = streams.filter((s) => s.isLive)
   const loadingPastTelemetry = isOpenF1 && selectedRaceTelemetryLoading && selectedRaceKey != null
   const showingPastTelemetry = isOpenF1 && selectedRaceTelemetry != null && selectedRaceSession != null
   const pastModeActive = showingPastTelemetry || loadingPastTelemetry
+  const showingUpcomingFallback = isOpenF1 && !featured?.isLive && !pastModeActive && nextUpcomingEvent != null && selectedRaceKey == null
+  const showTelemetryEmbed = isOpenF1 && !showingUpcomingFallback && (featured?.isLive || selectedRaceKey != null)
   const tone = featured?.color
     ? `${featured.color.charAt(0).toUpperCase()}${featured.color.slice(1)}`
     : 'Cyan'
+
+  useEffect(() => {
+    if (!showTelemetryEmbed || !isOpenF1) {
+      setTelemetryEmbedLoading(false)
+      setTelemetryEmbedUrl(null)
+      return
+    }
+
+    let cancelled = false
+    const mode: 'live' | 'recent' = selectedRaceKey != null ? 'recent' : 'live'
+    const sessionKey = selectedRaceKey ?? undefined
+    setTelemetryEmbedLoading(true)
+    setTelemetryEmbedUrl(null)
+
+    getOpenF1SessionVideo({ mode, sessionKey })
+      .then((video) => {
+        if (!cancelled && video.embedUrl) {
+          setTelemetryEmbedUrl(video.embedUrl)
+          setTelemetryEmbedLoading(false)
+        } else if (!cancelled) {
+          setTelemetryEmbedUrl(DEFAULT_TELEMETRY_EMBED_URL)
+          setTelemetryEmbedLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTelemetryEmbedUrl(DEFAULT_TELEMETRY_EMBED_URL)
+          setTelemetryEmbedLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [showTelemetryEmbed, isOpenF1, selectedRaceKey])
 
   const handleTogglePlayback = async () => {
     const video = videoRef.current
@@ -304,13 +400,13 @@ export default function LivePage() {
     )
   }
 
-  if (error || streams.length === 0) {
+  if (error || !featured) {
     return (
       <>
         <Nav />
         <main className={styles.page}>
           <div style={{ padding: '120px 48px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-            {error || 'NO LIVE STREAMS AT THIS TIME'}
+            {error || 'NO TELEMETRY DATA AVAILABLE'}
           </div>
         </main>
       </>
@@ -326,11 +422,15 @@ export default function LivePage() {
           <div className={styles.headerLeft}>
             <div className={styles.liveChip}>
               <span className={styles.liveDot}></span>
-              <span>LIVE NOW</span>
+              <span>{featured.isLive ? 'LIVE NOW' : nextUpcomingEvent ? 'UP NEXT' : 'STANDBY'}</span>
             </div>
-            <h1 className={styles.pageTitle}>STREAMS</h1>
+            <h1 className={styles.pageTitle}>TELEMETRY</h1>
             <p className={styles.pageSubtitle}>
-              {streams.length} channel{streams.length !== 1 ? 's' : ''} broadcasting · {viewerDisplay}+ watching
+              {featured.isLive
+                ? `Live race telemetry active · ${viewerDisplay}+ watching`
+                : nextUpcomingEvent
+                ? `Defaulting to the earliest upcoming race until live telemetry starts`
+                : 'Telemetry standby'}
             </p>
           </div>
           <div className={styles.headerStats}>
@@ -359,7 +459,7 @@ export default function LivePage() {
                 styles[
                   `player${tone}`
                 ]
-              }`}
+              } ${isOpenF1 && showTelemetryEmbed ? styles.playerTall : ''}`}
             >
               {!isOpenF1 && featured.playbackUrl ? (
                 <video
@@ -395,7 +495,7 @@ export default function LivePage() {
               ) : isOpenF1 ? (
                 <div className={styles.telemetryPanel}>
                   <div className={styles.telemetryTitle}>
-                    {pastModeActive ? 'OPENF1 TELEMETRY' : 'OPENF1 LIVE TELEMETRY'}
+                    {pastModeActive ? 'OPENF1 TELEMETRY' : showingUpcomingFallback ? 'NEXT RACE TELEMETRY TARGET' : 'OPENF1 LIVE TELEMETRY'}
                   </div>
                   {loadingPastTelemetry ? (
                     <div className={styles.telemetryCard}>
@@ -435,6 +535,33 @@ export default function LivePage() {
                         <div className={styles.telemetryValue}>{formatOpenF1Date(selectedRaceTelemetry.captured_at)}</div>
                       </div>
                     </div>
+                  ) : showingUpcomingFallback ? (
+                    <div className={styles.telemetryGrid}>
+                      <div className={styles.telemetryCard}>
+                        <div className={styles.telemetryLabel}>NEXT RACE</div>
+                        <div className={styles.telemetryValue}>{nextUpcomingEvent.title}</div>
+                      </div>
+                      <div className={styles.telemetryCard}>
+                        <div className={styles.telemetryLabel}>START TIME</div>
+                        <div className={styles.telemetryValue}>{formatUpcomingDate(nextUpcomingEvent)}</div>
+                      </div>
+                      <div className={styles.telemetryCard}>
+                        <div className={styles.telemetryLabel}>COUNTDOWN</div>
+                        <div className={styles.telemetryValue}>{formatUpcomingTime(nextUpcomingEvent)}</div>
+                      </div>
+                      <div className={styles.telemetryCard}>
+                        <div className={styles.telemetryLabel}>LOCATION</div>
+                        <div className={styles.telemetryValue}>{nextUpcomingEvent.location}</div>
+                      </div>
+                      <div className={styles.telemetryCard}>
+                        <div className={styles.telemetryLabel}>CATEGORY</div>
+                        <div className={styles.telemetryValue}>{nextUpcomingEvent.category.toUpperCase()}</div>
+                      </div>
+                      <div className={styles.telemetryCard}>
+                        <div className={styles.telemetryLabel}>STATUS</div>
+                        <div className={styles.telemetryValue}>WAITING FOR LIVE SESSION DATA</div>
+                      </div>
+                    </div>
                   ) : (
                     <div className={styles.telemetryGrid}>
                       <div className={styles.telemetryCard}>
@@ -467,6 +594,27 @@ export default function LivePage() {
                       </div>
                     </div>
                   )}
+                  {showTelemetryEmbed ? (
+                    <div className={styles.telemetryEmbedWrap}>
+                      <div className={styles.telemetryEmbedLabel}>RACE VIDEO FEED</div>
+                      <div className={styles.telemetryEmbedFrame}>
+                        {telemetryEmbedLoading || !telemetryEmbedUrl ? (
+                          <div className={styles.telemetryCard}>
+                            <div className={styles.telemetryLabel}>VIDEO STATUS</div>
+                            <div className={styles.telemetryValue}>LOADING RACE VIDEO...</div>
+                          </div>
+                        ) : (
+                          <iframe
+                            src={telemetryEmbedUrl}
+                            title="Race video feed"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerPolicy="strict-origin-when-cross-origin"
+                            allowFullScreen
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                   {!pastModeActive && featured.externalWatch && featured.externalWatch.length > 0 ? (
                     <div className={styles.watchOptions}>
                       <div className={styles.watchOptionsLabel}>WATCH LIVE RACES</div>
@@ -491,30 +639,34 @@ export default function LivePage() {
               )}
 
               {/* Fake video overlay */}
-              <div className={styles.playerNoise}></div>
-              <div className={styles.playerScanlines}></div>
+              {!isOpenF1 ? <div className={styles.playerNoise}></div> : null}
+              {!isOpenF1 ? <div className={styles.playerScanlines}></div> : null}
 
               {/* Top HUD */}
-              <div className={styles.playerHudTop}>
-                {!pastModeActive ? (
-                  <div className={styles.playerLiveBadge}>
-                    <span className={styles.liveDot}></span>LIVE
+              {!isOpenF1 ? (
+                <div className={styles.playerHudTop}>
+                  {!pastModeActive && featured.isLive ? (
+                    <div className={styles.playerLiveBadge}>
+                      <span className={styles.liveDot}></span>LIVE
+                    </div>
+                  ) : null}
+                  <span className={styles.playerCat}>{featured.category}</span>
+                  <div className={styles.playerQuality}>{featured.quality}</div>
+                  <div className={styles.playerStatus}>
+                    {showingUpcomingFallback
+                      ? 'UP NEXT'
+                      : playbackState === 'playing'
+                      ? 'PLAYING'
+                      : playbackState === 'loading'
+                      ? 'BUFFERING'
+                      : playbackState === 'paused'
+                      ? 'PAUSED'
+                      : 'ERROR'}
                   </div>
-                ) : null}
-                <span className={styles.playerCat}>{featured.category}</span>
-                <div className={styles.playerQuality}>{featured.quality}</div>
-                <div className={styles.playerStatus}>
-                  {playbackState === 'playing'
-                    ? 'PLAYING'
-                    : playbackState === 'loading'
-                    ? 'BUFFERING'
-                    : playbackState === 'paused'
-                    ? 'PAUSED'
-                    : 'ERROR'}
                 </div>
-              </div>
+              ) : null}
 
-              {playbackMessage ? (
+              {playbackMessage && !isOpenF1 ? (
                 <div className={styles.playerMessage}>{playbackMessage}</div>
               ) : null}
 
@@ -528,52 +680,58 @@ export default function LivePage() {
               ) : null}
 
               {/* Bottom HUD */}
-              <div className={styles.playerHudBot}>
-                <div className={styles.playerInfo}>
-                  <div className={styles.playerTitle}>{featured.title}</div>
-                  <div className={styles.playerSub}>{featured.subtitle}</div>
+              {!isOpenF1 ? (
+                <div className={styles.playerHudBot}>
+                  <div className={styles.playerInfo}>
+                    <div className={styles.playerTitle}>{featured.title}</div>
+                    <div className={styles.playerSub}>{featured.subtitle}</div>
+                  </div>
+                  <div className={styles.playerMeta}>
+                    <div className={styles.metaItem}>
+                      <span className={styles.metaLabel}>LEADER</span>
+                      <span className={styles.metaVal}>{featured.currentLeader}</span>
+                    </div>
+                    <div className={styles.metaItem}>
+                      <span className={styles.metaLabel}>SPEED</span>
+                      <span className={styles.metaVal}>{featured.currentSpeed}</span>
+                    </div>
+                    <div className={styles.metaItem}>
+                      <span className={styles.metaLabel}>VIEWERS</span>
+                      <span className={styles.metaVal}>
+                        {featured.viewers >= 1_000_000
+                          ? `${(featured.viewers / 1_000_000).toFixed(1)}M`
+                          : featured.viewers >= 1_000
+                          ? `${(featured.viewers / 1_000).toFixed(0)}K`
+                          : featured.viewers}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className={styles.playerMeta}>
-                  <div className={styles.metaItem}>
-                    <span className={styles.metaLabel}>LEADER</span>
-                    <span className={styles.metaVal}>{featured.currentLeader}</span>
-                  </div>
-                  <div className={styles.metaItem}>
-                    <span className={styles.metaLabel}>SPEED</span>
-                    <span className={styles.metaVal}>{featured.currentSpeed}</span>
-                  </div>
-                  <div className={styles.metaItem}>
-                    <span className={styles.metaLabel}>VIEWERS</span>
-                    <span className={styles.metaVal}>
-                      {featured.viewers >= 1_000_000
-                        ? `${(featured.viewers / 1_000_000).toFixed(1)}M`
-                        : featured.viewers >= 1_000
-                        ? `${(featured.viewers / 1_000).toFixed(0)}K`
-                        : featured.viewers}
-                    </span>
-                  </div>
-                </div>
-              </div>
+              ) : null}
 
               {/* Progress bar */}
-              <div className={styles.playerProgress}>
-                <div className={styles.playerProgressFill}></div>
-              </div>
+              {!isOpenF1 ? (
+                <div className={styles.playerProgress}>
+                  <div className={styles.playerProgressFill}></div>
+                </div>
+              ) : null}
             </div>
 
             {/* Stream controls */}
-            <div className={styles.controls}>
-              <button className={styles.controlBtn}>⏮</button>
-              <button className={styles.controlBtn}>⏸</button>
-              <button className={styles.controlBtn}>⏭</button>
-              <div className={styles.controlSep}></div>
-              <button className={styles.controlBtn}>🔇</button>
-              <div className={styles.volumeBar}>
-                <div className={styles.volumeFill}></div>
+            {!isOpenF1 ? (
+              <div className={styles.controls}>
+                <button className={styles.controlBtn}>⏮</button>
+                <button className={styles.controlBtn}>⏸</button>
+                <button className={styles.controlBtn}>⏭</button>
+                <div className={styles.controlSep}></div>
+                <button className={styles.controlBtn}>🔇</button>
+                <div className={styles.volumeBar}>
+                  <div className={styles.volumeFill}></div>
+                </div>
+                <div className={styles.controlSep}></div>
+                <button className={`${styles.controlBtn} ${styles.controlBtnRight}`}>⛶</button>
               </div>
-              <div className={styles.controlSep}></div>
-              <button className={`${styles.controlBtn} ${styles.controlBtnRight}`}>⛶</button>
-            </div>
+            ) : null}
           </div>
 
           {/* Sidebar */}
@@ -581,49 +739,55 @@ export default function LivePage() {
             <div className={styles.sideSection}>
               <div className={styles.sideLabel}>LIVE CHANNELS</div>
               <div className={styles.channelList}>
-                {streams.map((stream) => (
-                  <div
-                    key={stream.id}
-                    className={`${styles.channelCard} ${
-                      active === stream.id ? styles.channelCardActive : ''
-                    } ${
-                      styles[
-                        `channelCard${
-                          stream.color.charAt(0).toUpperCase() + stream.color.slice(1)
-                        }`
-                      ]
-                    }`}
-                    onClick={() => {
-                      setActive(stream.id)
-                      resetPastTelemetrySelection()
-                    }}
-                  >
-                    <div className={styles.channelTop}>
-                      <div className={styles.channelLive}>
-                        <span className={styles.liveDotSm}></span>
-                        {stream.category}
-                      </div>
-                      <div className={styles.channelViewers}>
-                        👁{' '}
-                        {stream.viewers >= 1_000_000
-                          ? `${(stream.viewers / 1_000_000).toFixed(1)}M`
-                          : stream.viewers >= 1_000
-                          ? `${(stream.viewers / 1_000).toFixed(0)}K`
-                          : stream.viewers}
-                      </div>
-                    </div>
-                    <div className={styles.channelTitle}>{stream.title}</div>
-                    <div className={styles.channelSub}>
-                      {stream.subtitle} · {stream.location}
-                    </div>
+                {liveStreams.length === 0 ? (
+                  <div className={styles.upcomingItem}>
+                    <div className={styles.upcomingTitle}>No live channels active right now</div>
                   </div>
-                ))}
+                ) : (
+                  liveStreams.map((stream) => (
+                    <div
+                      key={stream.id}
+                      className={`${styles.channelCard} ${
+                        active === stream.id ? styles.channelCardActive : ''
+                      } ${
+                        styles[
+                          `channelCard${
+                            stream.color.charAt(0).toUpperCase() + stream.color.slice(1)
+                          }`
+                        ]
+                      }`}
+                      onClick={() => {
+                        setActive(stream.id)
+                        resetPastTelemetrySelection()
+                      }}
+                    >
+                      <div className={styles.channelTop}>
+                        <div className={styles.channelLive}>
+                          <span className={styles.liveDotSm}></span>
+                          {stream.category}
+                        </div>
+                        <div className={styles.channelViewers}>
+                          👁{' '}
+                          {stream.viewers >= 1_000_000
+                            ? `${(stream.viewers / 1_000_000).toFixed(1)}M`
+                            : stream.viewers >= 1_000
+                            ? `${(stream.viewers / 1_000).toFixed(0)}K`
+                            : stream.viewers}
+                        </div>
+                      </div>
+                      <div className={styles.channelTitle}>{stream.title}</div>
+                      <div className={styles.channelSub}>
+                        {stream.subtitle} · {stream.location}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
             <div className={styles.sideSection}>
               <div className={styles.sideLabel}>UP NEXT</div>
-              <div className={styles.upcomingList}>
+              <div className={`${styles.upcomingList} ${styles.scrollWindow}`}>
                 {upcomingEvents.length === 0 ? (
                   <div className={styles.upcomingItem}>
                     <div className={styles.upcomingTitle}>No upcoming events scheduled</div>
@@ -642,7 +806,7 @@ export default function LivePage() {
 
             <div className={styles.sideSection}>
               <div className={styles.sideLabel}>RECENT F1 RACES</div>
-              <div className={styles.upcomingList}>
+              <div className={`${styles.upcomingList} ${styles.scrollWindow}`}>
                 {recentRaces.length === 0 ? (
                   <div className={styles.upcomingItem}>
                     <div className={styles.upcomingTitle}>No recent races available</div>

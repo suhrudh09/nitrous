@@ -155,6 +155,7 @@ func main() {
 		// Passes
 		passes := api.Group("/passes")
 		{
+			passes.GET("", middleware.AuthMiddleware(), handlers.GetMyPasses)
 			passes.POST("/:id/purchase", middleware.AuthMiddleware(), handlers.PurchasePass)
 		}
 

@@ -117,6 +117,13 @@
   cursor: pointer;
 }
 
+.playerTall {
+  aspect-ratio: auto;
+  min-height: 980px;
+  height: auto;
+  overflow: visible;
+}
+
 .playerVideo {
   position: absolute;
   inset: 0;
@@ -155,6 +162,12 @@
     #060b16;
 }
 
+.playerTall .telemetryPanel {
+  position: relative;
+  inset: auto;
+  overflow: visible;
+}
+
 .telemetryTitle {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -187,6 +200,34 @@
   font-size: 14px;
   font-weight: 600;
   color: #fff;
+}
+
+.telemetryEmbedWrap {
+  margin-top: 4px;
+}
+
+.telemetryEmbedLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.telemetryEmbedFrame {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 16 / 9;
+}
+
+.telemetryEmbedFrame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
 }
 
 .watchOptions {
@@ -482,8 +523,8 @@
 .sidebar {
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  max-height: calc(100vh - 68px);
+  overflow: visible;
+  max-height: none;
 }
 
 .sideSection {
@@ -570,12 +611,36 @@
   gap: 0;
 }
 
+.scrollWindow {
+  --list-row-height: 76px;
+  max-height: calc(var(--list-row-height) * 3);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.scrollWindow::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollWindow::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+.scrollWindow::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .upcomingItem {
+  min-height: var(--list-row-height, 76px);
+  box-sizing: border-box;
   padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
 
 .recentRaceButton {
+  min-height: var(--list-row-height, 76px);
+  box-sizing: border-box;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -638,7 +703,7 @@
 .recentTelemetryError {
   font-size: 12px;
   color: var(--muted);
-} 
+}
 
 .recentTelemetryError {
   color: #ff8f8f;
@@ -674,6 +739,7 @@
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
   .playerWrap { padding: 24px; }
+  .playerTall { min-height: 780px; }
   .sidebar { border-right: none; border-top: 1px solid var(--border); }
   .pageHeader { flex-direction: column; align-items: flex-start; gap: 20px; padding: 32px 24px 24px; }
 }
