@@ -116,7 +116,7 @@ export default function MerchPage() {
       setShowSizeModal(true)
       return
     }
-    
+
     // For non-apparel items, add directly
     addToCartWithSize(item, undefined)
   }

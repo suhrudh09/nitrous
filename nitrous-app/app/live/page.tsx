@@ -98,16 +98,10 @@ export default function LivePage() {
 
     const utcClockMatch = normalizedTime.match(/^(\d{1,2}):(\d{2})\s*UTC$/i)
     if (utcClockMatch) {
-      const hours = utcClockMatch[1].padStart(2, '0')
-      const minutes = utcClockMatch[2]
+      const hours = (utcClockMatch[1] || '').padStart(2, '0')
+      const minutes = utcClockMatch[2] || ''
       const parsedUTCClock = new Date(`${dateOnly}T${hours}:${minutes}:00Z`)
       return Number.isNaN(parsedUTCClock.getTime()) ? null : parsedUTCClock
-    }
-
-    // Treat only ISO-like datetime strings as full timestamps.
-    if (/^\d{4}-\d{2}-\d{2}T/.test(normalizedTime)) {
-      const parsedFullTime = new Date(normalizedTime)
-      return Number.isNaN(parsedFullTime.getTime()) ? null : parsedFullTime
     }
 
     const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(normalizedTime)

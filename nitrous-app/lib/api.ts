@@ -11,6 +11,7 @@ import type {
   AuthResponse,
   Order,
   OrderItem,
+  PaymentIntent,
 } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'
@@ -371,6 +372,53 @@ export async function getMyOrders(token: string): Promise<Order[]> {
     headers: { Authorization: `Bearer ${token}` },
   })
   return data.orders ?? []
+}
+
+// ── Payments ─────────────────────────────────────────────────────────────────
+
+export async function createPaymentIntent(
+  amount: number,
+  referenceType: string,
+  referenceId: string,
+  token: string,
+  currency = 'usd',
+  description = ''
+): Promise<PaymentIntent> {
+  const payload = {
+    amount,
+    currency,
+    description,
+    referenceType,
+    referenceId,
+  }
+
+  return fetchAPI<PaymentIntent>('/payments/create-intent', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function confirmPayment(
+  paymentId: string,
+  token: string
+): Promise<{ message: string; status: string }> {
+  return fetchAPI<{ message: string; status: string }>(`/payments/${paymentId}/confirm`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function getPaymentStatus(
+  paymentId: string,
+  token: string
+): Promise<{ paymentId: string; status: string; amount: number }> {
+  return fetchAPI<{ paymentId: string; status: string; amount: number }>(
+    `/payments/${paymentId}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  )
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

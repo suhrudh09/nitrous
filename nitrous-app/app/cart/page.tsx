@@ -105,9 +105,14 @@ export default function CartPage() {
     setCheckoutMsg('')
     try {
       const result = await createOrder(orderItems, token)
+      // Store order info for payment and redirect to payment page
+      localStorage.setItem('pending_order', JSON.stringify({
+        orderId: result.order.id,
+        total: result.order.total,
+        items: orderItems,
+      }))
       clearCart()
-      setCheckoutMsg(`✓ Order #${result.order.id.slice(0, 8).toUpperCase()} placed — total $${result.order.total}`)
-      router.push('/orders')
+      router.push('/payment')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Checkout failed'
       setCheckoutMsg(msg)

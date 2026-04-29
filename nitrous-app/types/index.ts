@@ -169,3 +169,29 @@ export interface Order {
   status: 'pending' | 'confirmed' | 'shipped'
   createdAt: string
 }
+
+// ── Payment ───────────────────────────────────────────────────────────────────
+
+export interface PaymentIntent {
+  clientSecret: string
+  paymentId: string
+  amount: number
+  currency: string
+}
+
+export interface PaymentMethod {
+  id: string
+  type: 'card'
+  card: {
+    brand: string
+    last4: string
+    expMonth: number
+    expYear: number
+  }
+}
+
+export interface PaymentState {
+  status: 'idle' | 'processing' | 'success' | 'failed'
+  error?: string
+  paymentId?: string
+}
