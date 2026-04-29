@@ -25,6 +25,104 @@ type Pass struct {
 	TierColor  string   `json:"tierColor" db:"tier_color"`
 }
 
+// UserPassPurchase represents a pass purchased by a user
+type UserPassPurchase struct {
+	Pass       Pass   `json:"pass"`
+	PurchaseID string `json:"purchaseId"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+// GetMyPasses returns all passes purchased by the authenticated user
+func GetMyPasses(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	if database.DB != nil {
+		rows, err := database.DB.Query(`
+			SELECT p.id, p.tier, p.event, p.location, p.date, p.category, p.price, 
+			       p.spots_left, p.total_spots, p.badge, p.tier_color,
+			       pp.id as purchase_id, pp.created_at
+			FROM pass_purchases pp
+			JOIN passes p ON pp.pass_id = p.id
+			WHERE pp.user_id = $1
+			ORDER BY pp.created_at DESC
+		`, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		purchases := make([]UserPassPurchase, 0)
+		for rows.Next() {
+			var p Pass
+			var purchaseID string
+			var createdAt time.Time
+			var badge sql.NullString
+
+			if err := rows.Scan(
+				&p.ID, &p.Tier, &p.Event, &p.Location, &p.Date, &p.Category, &p.Price,
+				&p.SpotsLeft, &p.TotalSpots, &badge, &p.TierColor,
+				&purchaseID, &createdAt,
+			); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			if badge.Valid {
+				p.Badge = &badge.String
+			}
+
+			purchases = append(purchases, UserPassPurchase{
+				Pass:       p,
+				PurchaseID: purchaseID,
+				CreatedAt:  createdAt.Format(time.RFC3339),
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{"purchases": purchases, "count": len(purchases)})
+		return
+	}
+
+	// In-memory fallback
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
+	purchases := make([]UserPassPurchase, 0)
+	for _, purchase := range database.PassPurchases {
+		if purchase.UserID == userID.(string) {
+			for _, pass := range database.Passes {
+				if pass.ID == purchase.PassID {
+					purchases = append(purchases, UserPassPurchase{
+						Pass: Pass{
+							ID:         pass.ID,
+							Tier:       pass.Tier,
+							Event:      pass.Event,
+							Location:   pass.Location,
+							Date:       pass.Date,
+							Category:   pass.Category,
+							Price:      pass.Price,
+							Perks:      pass.Perks,
+							SpotsLeft:  pass.SpotsLeft,
+							TotalSpots: pass.TotalSpots,
+							Badge:      pass.Badge,
+							TierColor:  pass.TierColor,
+						},
+						PurchaseID: purchase.PassID,
+						CreatedAt:  purchase.CreatedAt.Format(time.RFC3339),
+					})
+					break
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"purchases": purchases, "count": len(purchases)})
+}
+
 func PurchasePass(c *gin.Context) {
 	passID := c.Param("id")
 	userID, exists := c.Get("userID")

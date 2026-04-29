@@ -33,6 +33,10 @@ export default function MerchPage() {
   const [added, setAdded] = useState<string | null>(null)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutMsg, setCheckoutMsg] = useState('')
+  const [showSizeModal, setShowSizeModal] = useState(false)
+  const [selectedItemForSize, setSelectedItemForSize] = useState<MerchItem | null>(null)
+
+  const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
   const persistCart = (nextCart: CartEntry[]) => {
     try {
@@ -106,21 +110,41 @@ export default function MerchPage() {
     filter === 'all' ? products : products.filter((p) => p.category === filter)
 
   function addToCart(item: MerchItem) {
+    // Show size modal for apparel items
+    if (item.category === 'apparel') {
+      setSelectedItemForSize(item)
+      setShowSizeModal(true)
+      return
+    }
+    
+    // For non-apparel items, add directly
+    addToCartWithSize(item, undefined)
+  }
+
+  function addToCartWithSize(item: MerchItem, size?: string) {
     setCart((prev) => {
-      const existing = prev.find((e) => e.item.id === item.id)
+      const existing = prev.find((e) => e.item.id === item.id && e.size === size)
       let next: CartEntry[]
       if (existing) {
         next = prev.map((e) =>
-          e.item.id === item.id ? { ...e, quantity: e.quantity + 1 } : e
+          e.item.id === item.id && e.size === size ? { ...e, quantity: e.quantity + 1 } : e
         )
       } else {
-        next = [...prev, { item, quantity: 1 }]
+        next = [...prev, { item, quantity: 1, size }]
       }
       persistCart(next)
       return next
     })
     setAdded(item.id)
     setTimeout(() => setAdded(null), 1200)
+  }
+
+  function handleSizeSelect(size: string) {
+    if (selectedItemForSize) {
+      addToCartWithSize(selectedItemForSize, size)
+      setShowSizeModal(false)
+      setSelectedItemForSize(null)
+    }
   }
 
   async function handleCheckout() {
@@ -274,6 +298,36 @@ export default function MerchPage() {
             <span className={styles.promoCta}>Subscribe for early access</span>
           </div>
         </div>
+
+        {/* Size Selection Modal */}
+        {showSizeModal && selectedItemForSize && (
+          <div className={styles.sizeModalOverlay} onClick={() => setShowSizeModal(false)}>
+            <div className={styles.sizeModal} onClick={(e) => e.stopPropagation()}>
+              <button className={styles.sizeModalClose} onClick={() => setShowSizeModal(false)}>×</button>
+              <div className={styles.sizeModalHeader}>
+                <span className={styles.sizeModalIcon}>{selectedItemForSize.icon}</span>
+                <div>
+                  <div className={styles.sizeModalName}>{selectedItemForSize.name}</div>
+                  <div className={styles.sizeModalPrice}>${selectedItemForSize.price}</div>
+                </div>
+              </div>
+              <div className={styles.sizeModalBody}>
+                <div className={styles.sizeModalLabel}>Select Size</div>
+                <div className={styles.sizeGrid}>
+                  {SIZES.map((size) => (
+                    <button
+                      key={size}
+                      className={styles.sizeBtn}
+                      onClick={() => handleSizeSelect(size)}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </>
   )

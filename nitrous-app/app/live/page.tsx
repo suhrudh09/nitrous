@@ -203,7 +203,7 @@ export default function LivePage() {
   // ── WebSocket — real-time telemetry updates ────────────────────────────────
   useEffect(() => {
     const wsUrl =
-      process.env.NEXT_PUBLIC_WS_URL || '<iframe width="560" height="315" src="https://www.youtube.com/embed/YA1ruaeoZZY?si=8sEKuWUP94CoIG4h" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>ws://localhost:8080/api/streams/ws'
+      process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/api/streams/ws'
     const ws = new WebSocket(wsUrl)
 
     ws.onmessage = (e) => {

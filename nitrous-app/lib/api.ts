@@ -411,3 +411,29 @@ export async function purchasePass(
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+// ── Passes ───────────────────────────────────────────────────────────────────
+
+export interface UserPass {
+  id: string
+  tier: string
+  tierColor: string
+  event: string
+  location: string
+  date: string
+  category: string
+  price: number
+  perks: string[]
+  spotsLeft: number
+  totalSpots: number
+  badge: string | null
+  purchaseId: string
+  createdAt: string
+}
+
+export async function getMyPasses(token: string): Promise<UserPass[]> {
+  const data = await fetchAPI<{ purchases: UserPass[]; count: number }>('/passes', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return data.purchases ?? []
+}
