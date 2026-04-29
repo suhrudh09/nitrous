@@ -4,7 +4,7 @@ import styles from './Hero.module.css'
 
 const heroNavCards = [
   { id: 'garage', label: 'ACCESS\nGARAGE', icon: '🚗', href: '/garage', color: 'grey', progress: 60 },
-  { id: 'passes', label: 'ACCESS\nEVENT PASSES', icon: '🎫', href: '/passes', color: 'red', progress: 40 },
+  { id: 'passes', label: 'ACCESS\nPASSES', icon: '🎫', href: '/passes', color: 'red', progress: 40 },
   { id: 'streams', label: 'ACCESS\nLIVE STREAMS', icon: '📺', href: '/live', color: 'cyan', progress: 75 },
   { id: 'teams', label: 'TEAMS', icon: '🏆', href: '/teams', color: 'orange', progress: 55 },
   { id: 'journeys', label: 'JOURNEYS', icon: '🌍', href: '/journeys', color: 'blue', progress: 85 },
