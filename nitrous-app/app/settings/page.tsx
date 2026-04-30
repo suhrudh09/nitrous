@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -46,7 +46,7 @@ const tabs: { id: Tab; label: string; icon: string }[] = [
   { id: 'preferences', label: 'Preferences', icon: '⚙️' },
 ]
 
-export default function SettingsPage() {
+function SettingsPageInner() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>('profile')
   const [user, setUser] = useState<UserProfile | null>(null)
@@ -691,5 +691,13 @@ export default function SettingsPage() {
         )}
       </main>
     </>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsPageInner />
+    </Suspense>
   )
 }
