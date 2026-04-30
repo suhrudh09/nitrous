@@ -24,6 +24,7 @@ type TeamCard = {
   points: number
   following: number
   drivers: string[]
+  followers: string[]
   color: string
   accentColor: string
 }
@@ -49,6 +50,7 @@ function normalizeTeams(input: any[]): TeamCard[] {
       points: typeof team?.points === 'number' ? team.points : 0,
       following: followersCount,
       drivers: Array.isArray(team?.drivers) ? team.drivers.filter((d: unknown) => typeof d === 'string') : [],
+      followers: Array.isArray(team?.followers) ? team.followers.filter((f: unknown) => typeof f === 'string') : [],
       color,
       accentColor: typeof team?.accentColor === 'string' ? team.accentColor : colorMap[color] || 'var(--cyan)',
     }
@@ -65,7 +67,20 @@ export default function TeamsPage() {
     async function fetchData() {
       try {
         const data = await getTeams()
-        setTeams(normalizeTeams(data))
+        const normalized = normalizeTeams(data)
+        setTeams(normalized)
+
+        const rawUser = localStorage.getItem('nitrous_user')
+        if (rawUser) {
+          const parsedUser = JSON.parse(rawUser)
+          const userId = typeof parsedUser?.id === 'string' ? parsedUser.id : ''
+          if (userId) {
+            const initialFollowing = new Set(
+              normalized.filter((team) => team.followers.includes(userId)).map((team) => team.id)
+            )
+            setFollowingIds(initialFollowing)
+          }
+        }
       } catch (error) {
         console.error('Failed to fetch teams:', error)
       } finally {
@@ -85,15 +100,35 @@ export default function TeamsPage() {
     setProcessingId(teamId)
     try {
       if (followingIds.has(teamId)) {
-        await unfollowTeam(teamId, token)
+        const result = await unfollowTeam(teamId, token)
         setFollowingIds(prev => {
           const newSet = new Set(prev)
           newSet.delete(teamId)
           return newSet
         })
+        setTeams(prev => prev.map(team =>
+          team.id === teamId
+            ? {
+                ...team,
+                following: typeof (result as any)?.team?.followersCount === 'number'
+                  ? (result as any).team.followersCount
+                  : Math.max(0, team.following - 1),
+              }
+            : team
+        ))
       } else {
-        await followTeam(teamId, token)
+        const result = await followTeam(teamId, token)
         setFollowingIds(prev => new Set([...prev, teamId]))
+        setTeams(prev => prev.map(team =>
+          team.id === teamId
+            ? {
+                ...team,
+                following: typeof (result as any)?.team?.followersCount === 'number'
+                  ? (result as any).team.followersCount
+                  : team.following + 1,
+              }
+            : team
+        ))
       }
     } catch (error) {
       console.error('Failed to toggle follow:', error)
@@ -193,19 +228,24 @@ export default function TeamsPage() {
                 </div>
 
                 {/* Action */}
+                {(() => {
+                  const isFollowing = followingIds.has(team.id)
+                  return (
                 <button 
-                  className={styles.followBtn} 
-                  style={{ borderColor: accentRgb, color: accentRgb }}
+                  className={`${styles.followBtn} ${isFollowing ? styles.followBtnFollowing : ''}`} 
+                  style={isFollowing ? undefined : { borderColor: accentRgb, color: accentRgb }}
                   onClick={() => handleFollow(team.id)}
                   disabled={processingId === team.id}
                 >
                   {processingId === team.id 
                     ? '⏳ ...' 
-                    : followingIds.has(team.id) 
-                    ? '✓ FOLLOWING' 
-                    : '+ FOLLOW TEAM'
+                    : isFollowing
+                    ? 'Unfollow Team'
+                    : 'Follow Team'
                   }
                 </button>
+                  )
+                })()}
               </div>
             )
           })}

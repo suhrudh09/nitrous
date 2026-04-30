@@ -1,8 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import RoleBadge from '@/components/RoleBadge'
+import { createPaymentIntent, confirmPayment, getCurrentUser, updateCurrentUserPlan, updateCurrentUserRole } from '@/lib/api'
 import styles from './settings.module.css'
 
 type Tab = 'profile' | 'notifications' | 'security' | 'preferences'
@@ -12,8 +14,29 @@ interface UserProfile {
   email: string
   initials: string
   joinedDate: string
-  plan: 'FREE' | 'PRO' | 'PLATINUM'
+  plan: 'FREE' | 'VIP' | 'PLATINUM'
   role: 'viewer' | 'participant' | 'manager' | 'sponsor' | 'admin'
+}
+
+type MembershipPlan = 'FREE' | 'VIP' | 'PLATINUM'
+type UserRole = 'viewer' | 'participant' | 'manager' | 'sponsor'
+
+interface PlanCheckout {
+  plan: Exclude<MembershipPlan, 'FREE'>
+  label: string
+  priceLabel: string
+  amountCents: number
+}
+
+function formatCardNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 16)
+  return digits.replace(/(\d{4})(?=\d)/g, '$1 ')
+}
+
+function formatExpiry(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 4)
+  if (digits.length >= 2) return digits.slice(0, 2) + '/' + digits.slice(2)
+  return digits
 }
 
 const tabs: { id: Tab; label: string; icon: string }[] = [
@@ -24,11 +47,21 @@ const tabs: { id: Tab; label: string; icon: string }[] = [
 ]
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>('profile')
   const [user, setUser] = useState<UserProfile | null>(null)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [saved, setSaved] = useState(false)
+  const [checkout, setCheckout] = useState<PlanCheckout | null>(null)
+  const [payStatus, setPayStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle')
+  const [payError, setPayError] = useState('')
+  const [cardNumber, setCardNumber] = useState('')
+  const [expiry, setExpiry] = useState('')
+  const [cvc, setCvc] = useState('')
+  const [cardName, setCardName] = useState('')
+  const [pendingRoleUpgrade, setPendingRoleUpgrade] = useState<UserRole | null>(null)
+  const [autoCheckoutHandled, setAutoCheckoutHandled] = useState(false)
 
   // Notification toggles
   const [notifs, setNotifs] = useState({
@@ -51,8 +84,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     try {
+      const token = localStorage.getItem('nitrous_token')
       const stored = localStorage.getItem('nitrous_user')
-      if (stored) {
+      if (stored && token) {
         const parsed = JSON.parse(stored)
         const names = (parsed.name || 'User').trim().split(' ')
         const initials = names.length >= 2
@@ -63,12 +97,35 @@ export default function SettingsPage() {
           email: parsed.email || '',
           initials,
           joinedDate: parsed.joinedDate || 'Jan 2025',
-          plan: parsed.plan || 'FREE',
+          plan: (parsed.plan || 'FREE').toUpperCase() === 'PRO' ? 'VIP' : (parsed.plan || 'FREE'),
           role: parsed.role || 'viewer',
         }
         setUser(profile)
         setName(profile.name)
         setEmail(profile.email)
+
+        getCurrentUser(token)
+          .then((remote) => {
+            const remoteNames = (remote.name || 'User').trim().split(' ')
+            const remoteInitials = remoteNames.length >= 2
+              ? `${remoteNames[0][0]}${remoteNames[remoteNames.length - 1][0]}`.toUpperCase()
+              : remoteNames[0].slice(0, 2).toUpperCase()
+            const remoteProfile: UserProfile = {
+              name: remote.name,
+              email: remote.email,
+              initials: remoteInitials,
+              joinedDate: profile.joinedDate,
+              plan: remote.plan,
+              role: remote.role,
+            }
+            setUser(remoteProfile)
+            setName(remoteProfile.name)
+            setEmail(remoteProfile.email)
+            localStorage.setItem('nitrous_user', JSON.stringify({ ...parsed, ...remote, plan: remote.plan }))
+          })
+          .catch(() => {
+            // keep local snapshot if /auth/me fails
+          })
       } else {
         globalThis.location.href = '/login'
       }
@@ -101,8 +158,154 @@ export default function SettingsPage() {
 
   const planColors: Record<string, string> = {
     FREE: 'var(--muted)',
-    PRO: 'var(--cyan)',
+    VIP: 'var(--cyan)',
     PLATINUM: '#facc15',
+  }
+
+  const planRank: Record<MembershipPlan, number> = {
+    FREE: 0,
+    VIP: 1,
+    PLATINUM: 2,
+  }
+
+  const plans: Array<{
+    id: MembershipPlan
+    label: string
+    price: string
+    amountCents: number
+    perks: string[]
+  }> = [
+    { id: 'FREE', label: 'Free', price: '$0', amountCents: 0, perks: ['Standard streams', 'Public events', 'Basic merch access'] },
+    { id: 'VIP', label: 'VIP', price: '$12/mo', amountCents: 1200, perks: ['HD + 4K streams', 'Priority event access', '10% merch discount', 'Journey early access'] },
+    { id: 'PLATINUM', label: 'Platinum', price: '$29/mo', amountCents: 2900, perks: ['All VIP features', '15% merch discount', 'Exclusive journeys', 'Pit lane access passes', 'Dedicated support'] },
+  ]
+
+  const visiblePlans = user
+    ? plans.filter(plan => planRank[plan.id] >= planRank[user.plan])
+    : plans
+
+  const openPlanCheckout = (plan: { id: MembershipPlan; label: string; price: string; amountCents: number }) => {
+    if (plan.id === 'FREE' || !user) return
+    setCheckout({
+      plan: plan.id,
+      label: plan.label,
+      priceLabel: plan.price,
+      amountCents: plan.amountCents,
+    })
+    setPayStatus('idle')
+    setPayError('')
+    setCardNumber('')
+    setExpiry('')
+    setCvc('')
+    setCardName('')
+  }
+
+  useEffect(() => {
+    if (!user || autoCheckoutHandled) return
+
+    const rawTargetRole = (searchParams.get('targetRole') || localStorage.getItem('nitrous_signup_selected_role') || '').toLowerCase()
+    const requestedPlan = (searchParams.get('upgrade') || '').toUpperCase()
+    const targetRole: UserRole | null =
+      rawTargetRole === 'participant' || rawTargetRole === 'manager' || rawTargetRole === 'sponsor'
+        ? (rawTargetRole as UserRole)
+        : null
+
+    if (!targetRole || (requestedPlan !== 'VIP' && requestedPlan !== 'PLATINUM')) {
+      setAutoCheckoutHandled(true)
+      return
+    }
+
+    const chosen = plans.find(p => p.id === requestedPlan)
+    if (!chosen) {
+      setAutoCheckoutHandled(true)
+      return
+    }
+
+    // If user already has enough plan, only perform role update.
+    if (planRank[user.plan] >= planRank[chosen.id]) {
+      const token = localStorage.getItem('nitrous_token')
+      if (!token) {
+        setAutoCheckoutHandled(true)
+        return
+      }
+      updateCurrentUserRole(targetRole, token)
+        .then((updatedRoleUser) => {
+          setUser(prev => prev ? ({ ...prev, role: updatedRoleUser.role }) : prev)
+          try {
+            const stored = JSON.parse(localStorage.getItem('nitrous_user') || '{}')
+            localStorage.setItem('nitrous_user', JSON.stringify({ ...stored, role: updatedRoleUser.role }))
+            localStorage.removeItem('nitrous_signup_selected_role')
+          } catch {
+            // ignore
+          }
+        })
+        .finally(() => setAutoCheckoutHandled(true))
+      return
+    }
+
+    setPendingRoleUpgrade(targetRole)
+    openPlanCheckout(chosen)
+    setAutoCheckoutHandled(true)
+  }, [user, autoCheckoutHandled, searchParams])
+
+  const handlePlanPayment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!checkout || !user) return
+
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) {
+      globalThis.location.href = '/login'
+      return
+    }
+
+    setPayStatus('processing')
+    setPayError('')
+
+    try {
+      const intent = await createPaymentIntent(checkout.amountCents, 'membership', checkout.plan, token)
+      await confirmPayment(intent.paymentId, token)
+      const updatedPlanUser = await updateCurrentUserPlan(checkout.plan, token)
+      let finalUser = updatedPlanUser
+
+      if (pendingRoleUpgrade) {
+        finalUser = await updateCurrentUserRole(pendingRoleUpgrade, token)
+      }
+
+      const names = (finalUser.name || 'User').trim().split(' ')
+      const initials = names.length >= 2
+        ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
+        : names[0].slice(0, 2).toUpperCase()
+
+      setUser(prev => prev ? ({
+        ...prev,
+        name: finalUser.name,
+        email: finalUser.email,
+        initials,
+        role: finalUser.role,
+        plan: finalUser.plan,
+      }) : prev)
+
+      try {
+        const stored = JSON.parse(localStorage.getItem('nitrous_user') || '{}')
+        localStorage.setItem('nitrous_user', JSON.stringify({
+          ...stored,
+          name: finalUser.name,
+          email: finalUser.email,
+          role: finalUser.role,
+          plan: finalUser.plan,
+        }))
+        localStorage.removeItem('nitrous_signup_selected_role')
+      } catch {
+        // ignore local storage sync errors
+      }
+
+      setPendingRoleUpgrade(null)
+      setPayStatus('done')
+      setTimeout(() => setCheckout(null), 1600)
+    } catch (err: unknown) {
+      setPayStatus('error')
+      setPayError(err instanceof Error ? err.message : 'Payment failed')
+    }
   }
 
   if (!user) return null
@@ -160,6 +363,7 @@ export default function SettingsPage() {
             <div className={styles.sideQuick}>
               <Link href="/garage" className={styles.quickLink}>🚗 My Garage</Link>
               <Link href="/passes" className={styles.quickLink}>🎫 My Passes</Link>
+              <Link href="/reminders" className={styles.quickLink}>⏰ My Reminders</Link>
               <Link href="/journeys" className={styles.quickLink}>🌍 My Journeys</Link>
             </div>
 
@@ -217,11 +421,7 @@ export default function SettingsPage() {
                 <div className={styles.planSection}>
                   <div className={styles.sectionTitle} style={{ fontSize: '15px', marginBottom: '16px' }}>Membership Plan</div>
                   <div className={styles.planCards}>
-                    {[
-                      { id: 'FREE', label: 'Free', price: '$0', perks: ['Standard streams', 'Public events', 'Basic merch access'] },
-                      { id: 'PRO', label: 'Pro', price: '$12/mo', perks: ['HD + 4K streams', 'Priority event access', '10% merch discount', 'Journey early access'] },
-                      { id: 'PLATINUM', label: 'Platinum', price: '$29/mo', perks: ['All Pro features', '15% merch discount', 'Exclusive journeys', 'Pit lane access passes', 'Dedicated support'] },
-                    ].map(plan => (
+                    {visiblePlans.map(plan => (
                       <div
                         key={plan.id}
                         className={`${styles.planCard} ${user.plan === plan.id ? styles.planCardActive : ''}`}
@@ -242,8 +442,12 @@ export default function SettingsPage() {
                           ))}
                         </div>
                         {user.plan !== plan.id && (
-                          <button className={styles.upgradePlanBtn} style={{ borderColor: planColors[plan.id], color: planColors[plan.id] }}>
-                            {user.plan === 'PLATINUM' ? 'Downgrade' : 'Upgrade'} →
+                          <button
+                            className={styles.upgradePlanBtn}
+                            style={{ borderColor: planColors[plan.id], color: planColors[plan.id] }}
+                            onClick={() => openPlanCheckout(plan)}
+                          >
+                            Upgrade →
                           </button>
                         )}
                       </div>
@@ -428,6 +632,63 @@ export default function SettingsPage() {
 
           </div>
         </div>
+
+        {checkout && (
+          <div className={styles.payModalOverlay} onClick={() => payStatus !== 'processing' && setCheckout(null)}>
+            <div className={styles.payModal} onClick={e => e.stopPropagation()}>
+              {payStatus === 'done' ? (
+                <div className={styles.payDone}>
+                  <div className={styles.payDoneIcon}>✓</div>
+                  <div className={styles.payDoneTitle}>Plan Updated</div>
+                  <div className={styles.payDoneSub}>{checkout.label} membership is now active.</div>
+                </div>
+              ) : (
+                <>
+                  <div className={styles.payModalHeader}>
+                    <div className={styles.payModalTitle}>UPGRADE MEMBERSHIP</div>
+                    <button className={styles.payModalClose} onClick={() => setCheckout(null)} disabled={payStatus === 'processing'}>✕</button>
+                  </div>
+
+                  <div className={styles.payOrderSummary}>
+                    <div className={styles.payOrderRow}>
+                      <span>{checkout.label} Plan</span>
+                      <span>{checkout.priceLabel}</span>
+                    </div>
+                    <div className={styles.payOrderTotal}>
+                      <span>CHARGE TODAY</span>
+                      <span>{checkout.priceLabel}</span>
+                    </div>
+                  </div>
+
+                  <form className={styles.payForm} onSubmit={handlePlanPayment}>
+                    <div className={styles.payFormField}>
+                      <label className={styles.payLabel}>CARDHOLDER NAME</label>
+                      <input className={styles.payInput} value={cardName} onChange={e => setCardName(e.target.value)} placeholder="Full Name" required />
+                    </div>
+                    <div className={styles.payFormField}>
+                      <label className={styles.payLabel}>CARD NUMBER</label>
+                      <input className={styles.payInput} value={cardNumber} onChange={e => setCardNumber(formatCardNumber(e.target.value))} maxLength={19} placeholder="1234 5678 9012 3456" required />
+                    </div>
+                    <div className={styles.payFormRow}>
+                      <div className={styles.payFormField}>
+                        <label className={styles.payLabel}>EXPIRY</label>
+                        <input className={styles.payInput} value={expiry} onChange={e => setExpiry(formatExpiry(e.target.value))} maxLength={5} placeholder="MM/YY" required />
+                      </div>
+                      <div className={styles.payFormField}>
+                        <label className={styles.payLabel}>CVC</label>
+                        <input className={styles.payInput} value={cvc} onChange={e => setCvc(e.target.value.replace(/\D/g, '').slice(0, 4))} maxLength={4} placeholder="123" required />
+                      </div>
+                    </div>
+                    {payError && <div className={styles.payError}>{payError}</div>}
+                    <button className={styles.paySubmitBtn} type="submit" disabled={payStatus === 'processing'}>
+                      {payStatus === 'processing' ? 'PROCESSING...' : `PAY ${checkout.priceLabel}`}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </>
   )

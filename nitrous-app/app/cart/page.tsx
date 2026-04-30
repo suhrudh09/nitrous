@@ -3,19 +3,18 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { createOrder, getMerchItems } from '@/lib/api'
-import type { MerchItem, OrderItem } from '@/types'
+import { createOrder, getMerchItems, getCart, saveCart, clearCart as clearCartAPI } from '@/lib/api'
+import type { MerchItem, OrderItem, CartItem as APICartItem } from '@/types'
 import styles from './cart.module.css'
 
 const CART_STORAGE_KEY = 'nitrous_cart_v1'
+const CART_UPDATED_EVENT = 'nitrous-cart-updated'
 
 interface CartEntry {
   item: MerchItem
   quantity: number
   size?: string
 }
-
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
 export default function CartPage() {
   const router = useRouter()
@@ -24,8 +23,30 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutMsg, setCheckoutMsg] = useState('')
-  const [showSizeModal, setShowSizeModal] = useState(false)
-  const [selectedItem, setSelectedItem] = useState<MerchItem | null>(null)
+
+  const toAPICartItems = (entries: CartEntry[]): APICartItem[] =>
+    entries.map((entry) => ({
+      merchId: entry.item.id,
+      name: entry.item.name,
+      icon: entry.item.icon,
+      price: entry.item.price,
+      category: entry.item.category,
+      quantity: entry.quantity,
+      size: entry.size,
+    }))
+
+  const toCartEntries = (items: APICartItem[]): CartEntry[] =>
+    items.map((entry) => ({
+      item: {
+        id: entry.merchId,
+        name: entry.name,
+        icon: entry.icon,
+        price: entry.price,
+        category: entry.category as MerchItem['category'],
+      },
+      quantity: entry.quantity,
+      size: entry.size,
+    }))
 
   // Load cart from localStorage
   useEffect(() => {
@@ -40,6 +61,19 @@ export default function CartPage() {
     } catch {
       // ignore
     }
+
+    const token = localStorage.getItem('nitrous_token')
+    if (token) {
+      getCart(token)
+        .then((items) => {
+          const remoteCart = toCartEntries(items)
+          setCart(remoteCart)
+        })
+        .catch(() => {
+          // Keep local cart fallback when backend fetch fails.
+        })
+    }
+
     setLoading(false)
   }, [])
 
@@ -51,38 +85,52 @@ export default function CartPage() {
   }, [])
 
   const persistCart = (nextCart: CartEntry[]) => {
+    const token = localStorage.getItem('nitrous_token')
+
     try {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextCart))
+      // Guest carts persist in localStorage; authenticated carts live on the backend only.
+      if (!token) {
+        localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextCart))
+      }
+      window.dispatchEvent(new Event(CART_UPDATED_EVENT))
     } catch {
       // ignore
     }
+
+    if (!token) return
+    saveCart(toAPICartItems(nextCart), token).catch(() => {
+      // Keep local cart if backend save fails.
+    })
   }
 
   function updateQuantity(index: number, delta: number) {
-    setCart((prev) => {
-      const next = [...prev]
-      const newQty = next[index].quantity + delta
-      if (newQty <= 0) {
-        next.splice(index, 1)
-      } else {
-        next[index].quantity = newQty
-      }
-      persistCart(next)
-      return next
-    })
+    const next = [...cart]
+    const newQty = next[index].quantity + delta
+    if (newQty <= 0) {
+      next.splice(index, 1)
+    } else {
+      next[index] = { ...next[index], quantity: newQty }
+    }
+    setCart(next)
+    persistCart(next)
   }
 
   function removeItem(index: number) {
-    setCart((prev) => {
-      const next = prev.filter((_, i) => i !== index)
-      persistCart(next)
-      return next
-    })
+    const next = cart.filter((_, i) => i !== index)
+    setCart(next)
+    persistCart(next)
   }
 
   function clearCart() {
     setCart([])
     persistCart([])
+
+    const token = localStorage.getItem('nitrous_token')
+    if (token) {
+      clearCartAPI(token).catch(() => {
+        // Ignore backend clear failure; local cart is still cleared.
+      })
+    }
   }
 
   async function handleCheckout() {
@@ -111,7 +159,6 @@ export default function CartPage() {
         total: result.order.total,
         items: orderItems,
       }))
-      clearCart()
       router.push('/payment')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Checkout failed'

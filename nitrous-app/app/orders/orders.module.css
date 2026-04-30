@@ -423,3 +423,34 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Journey Booking Cards ──────────────────────────────── */
+.journeyBookingCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.2s;
+}
+
+.journeyBookingCard:hover {
+  border-color: var(--border-bright);
+}
+
+.journeyBookingHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.journeyBookingCat {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--cyan);
+  text-transform: uppercase;
+}

@@ -3,9 +3,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { createPaymentIntent, confirmPayment } from '@/lib/api'
+import { createPaymentIntent, confirmPayment, clearCart, cancelOrder } from '@/lib/api'
 import type { OrderItem, PaymentState } from '@/types'
 import styles from './payment.module.css'
+
+const CART_STORAGE_KEY = 'nitrous_cart_v1'
+const CART_UPDATED_EVENT = 'nitrous-cart-updated'
 
 interface PendingOrder {
   orderId: string
@@ -81,6 +84,11 @@ export default function PaymentPage() {
       // Confirm payment
       await confirmPayment(intent.paymentId, token)
 
+      // Clear cart only after successful payment confirmation
+      await clearCart(token)
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify([]))
+      window.dispatchEvent(new Event(CART_UPDATED_EVENT))
+
       // Clear pending order
       localStorage.removeItem('pending_order')
 
@@ -98,6 +106,33 @@ export default function PaymentPage() {
 
   const handleRetry = () => {
     setPaymentState({ status: 'idle' })
+  }
+
+  const handleCancelOrder = async () => {
+    const token = localStorage.getItem('nitrous_token')
+    if (!token || !pendingOrder) {
+      router.push('/login')
+      return
+    }
+
+    setPaymentState({ status: 'processing' })
+    try {
+      await cancelOrder(pendingOrder.orderId, token)
+      await clearCart(token)
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify([]))
+      localStorage.removeItem('pending_order')
+      window.dispatchEvent(new Event(CART_UPDATED_EVENT))
+
+      setPaymentState({
+        status: 'failed',
+        error: 'Order cancelled for demo payment failure flow.',
+      })
+    } catch (err) {
+      setPaymentState({
+        status: 'failed',
+        error: err instanceof Error ? err.message : 'Order cancellation failed',
+      })
+    }
   }
 
   if (loading) {
@@ -283,6 +318,15 @@ export default function PaymentPage() {
             disabled={paymentState.status === 'processing'}
           >
             {paymentState.status === 'processing' ? 'Processing...' : `Pay $${pendingOrder.total.toFixed(2)}`}
+          </button>
+
+          <button
+            type="button"
+            className={styles.retryBtn}
+            onClick={handleCancelOrder}
+            disabled={paymentState.status === 'processing'}
+          >
+            Cancel Order (Demo)
           </button>
         </form>
       </main>

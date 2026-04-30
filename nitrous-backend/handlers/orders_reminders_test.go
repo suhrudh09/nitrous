@@ -122,8 +122,8 @@ func TestGetOrderByIDEndpoint(t *testing.T) {
 func TestCancelOrderEndpoint(t *testing.T) {
 	setupHandlersTestEnv()
 	database.Orders = []models.Order{
-		{ID: "o1", UserID: "user-1", MerchItemIDs: []string{"m1"}, Quantities: []int{1}, UnitPrices: []float64{10}, Total: 10, Status: "created"},
-		{ID: "o2", UserID: "user-2", MerchItemIDs: []string{"m2"}, Quantities: []int{1}, UnitPrices: []float64{20}, Total: 20, Status: "created"},
+		{ID: "o1", UserID: "user-1", MerchItemIDs: []string{"m1"}, Quantities: []int{1}, UnitPrices: []float64{10}, Total: 10, Status: "pending", CreatedAt: time.Now()},
+		{ID: "o2", UserID: "user-2", MerchItemIDs: []string{"m2"}, Quantities: []int{1}, UnitPrices: []float64{20}, Total: 20, Status: "pending", CreatedAt: time.Now()},
 	}
 
 	r := gin.New()

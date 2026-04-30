@@ -2,102 +2,20 @@
 import { useState, useEffect } from 'react'
 import Nav from '@/components/Nav'
 import styles from './passes.module.css'
-import { purchasePass } from '@/lib/api'
-
-// ── Static pass data (would come from API in production) ──────────────────────
-const PASSES = [
-  {
-    id: 'p1',
-    tier: 'PLATINUM',
-    tierColor: 'gold',
-    event: 'NASCAR Daytona 500',
-    location: 'Daytona International Speedway · Florida',
-    date: 'Feb 16, 2026',
-    category: 'MOTORSPORT',
-    price: 1200,
-    perks: ['Pit Lane Access', 'Meet & Greet Drivers', 'Hospitality Suite', 'Paddock Tour', 'Official Credential'],
-    spotsLeft: 4,
-    totalSpots: 20,
-    badge: 'SOLD OUT RISK',
-  },
-  {
-    id: 'p2',
-    tier: 'VIP',
-    tierColor: 'cyan',
-    event: 'Dakar Rally — Stage 9',
-    location: 'Al Ula → Hail · Saudi Arabia',
-    date: 'Feb 10, 2026',
-    category: 'OFF-ROAD',
-    price: 850,
-    perks: ['Service Park Access', 'Co-Driver Briefing', 'Bivouac Dinner', 'Official Rally Kit'],
-    spotsLeft: 12,
-    totalSpots: 50,
-    badge: null,
-  },
-  {
-    id: 'p3',
-    tier: 'GENERAL',
-    tierColor: 'muted',
-    event: 'Speed Boat Cup — Finals',
-    location: 'Lake Como · Italy',
-    date: 'Mar 2, 2026',
-    category: 'WATER',
-    price: 240,
-    perks: ['Grandstand Seating', 'Race Programme', 'Boat Dock Access'],
-    spotsLeft: 89,
-    totalSpots: 200,
-    badge: null,
-  },
-  {
-    id: 'p4',
-    tier: 'PLATINUM',
-    tierColor: 'gold',
-    event: 'Red Bull Skydive Series — Rd. 3',
-    location: 'Interlaken Drop Zone · Switzerland',
-    date: 'Mar 8, 2026',
-    category: 'AIR',
-    price: 680,
-    perks: ['Dropzone Access', 'Pilot Q&A', 'Skydiving Demo Flight', 'Red Bull Lounge', 'Souvenir Pack'],
-    spotsLeft: 8,
-    totalSpots: 30,
-    badge: 'HOT',
-  },
-  {
-    id: 'p5',
-    tier: 'VIP',
-    tierColor: 'cyan',
-    event: 'Crop Duster Air Racing',
-    location: 'Bakersfield Airfield · California',
-    date: 'Mar 14, 2026',
-    category: 'AIR',
-    price: 420,
-    perks: ['Airside Access', 'Cockpit Photo Session', 'Pilots Lounge Entry', 'VIP Viewing Deck'],
-    spotsLeft: 22,
-    totalSpots: 60,
-    badge: null,
-  },
-  {
-    id: 'p6',
-    tier: 'PLATINUM',
-    tierColor: 'red',
-    event: 'World Dirt Track Championship',
-    location: 'Knob Noster · Missouri, USA',
-    date: 'Feb 21, 2026',
-    category: 'MOTORSPORT',
-    price: 960,
-    perks: ['Pre-Race Grid Walk', 'Team Garage Access', 'Podium Ceremony Attendance', 'Signed Merchandise', 'Premium Seating'],
-    spotsLeft: 2,
-    totalSpots: 15,
-    badge: 'ALMOST GONE',
-  },
-]
+import { purchasePass, createPaymentIntent, confirmPayment, getAvailablePasses, type AvailablePass } from '@/lib/api'
 
 const colorMap: Record<string, string> = {
   gold: '#facc15',
+  GOLD: '#facc15',
   cyan: 'var(--cyan)',
+  CYAN: 'var(--cyan)',
   red: 'var(--red)',
+  RED: 'var(--red)',
   muted: 'var(--muted)',
   orange: '#fb923c',
+  blue: '#60a5fa',
+  BLUE: '#60a5fa',
+  purple: '#a78bfa',
 }
 
 const catIcons: Record<string, string> = {
@@ -110,33 +28,95 @@ const catIcons: Record<string, string> = {
 type Tier = 'all' | 'PLATINUM' | 'VIP' | 'GENERAL'
 type Category = 'all' | 'MOTORSPORT' | 'OFF-ROAD' | 'WATER' | 'AIR'
 
+interface PaymentModal {
+  passId: string
+  passName: string
+  pricePerPerson: number
+  quantity: number
+}
+
+function formatCardNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 16)
+  return digits.replace(/(\d{4})(?=\d)/g, '$1 ')
+}
+
+function formatExpiry(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 4)
+  if (digits.length >= 2) return digits.slice(0, 2) + '/' + digits.slice(2)
+  return digits
+}
+
 export default function PassesPage() {
   const [tierFilter, setTierFilter] = useState<Tier>('all')
   const [catFilter, setCatFilter] = useState<Category>('all')
-  const [purchasing, setPurchasing] = useState<string | null>(null)
+  const [passes, setPasses] = useState<AvailablePass[]>([])
+  const [loadingPasses, setLoadingPasses] = useState(true)
+  const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [purchased, setPurchased] = useState<Set<string>>(new Set())
+  const [paymentModal, setPaymentModal] = useState<PaymentModal | null>(null)
+  const [payStatus, setPayStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle')
+  const [payError, setPayError] = useState('')
+  const [cardNumber, setCardNumber] = useState('')
+  const [expiry, setExpiry] = useState('')
+  const [cvc, setCvc] = useState('')
+  const [cardName, setCardName] = useState('')
 
-  const filtered = PASSES.filter(p => {
+  const getQty = (id: string) => quantities[id] ?? 1
+  const setQty = (id: string, v: number) =>
+    setQuantities(prev => ({ ...prev, [id]: Math.max(1, Math.min(10, v)) }))
+
+  useEffect(() => {
+    getAvailablePasses()
+      .then(setPasses)
+      .catch(() => {/* silently show empty state */})
+      .finally(() => setLoadingPasses(false))
+  }, [])
+
+  const filtered = passes.filter(p => {
     if (tierFilter !== 'all' && p.tier !== tierFilter) return false
     if (catFilter !== 'all' && p.category !== catFilter) return false
     return true
   })
 
-  async function handlePurchase(passId: string) {
+  function openPayment(passId: string, passName: string, pricePerPerson: number) {
     const token = localStorage.getItem('nitrous_token')
-    if (!token) {
-      globalThis.location.href = '/login'
-      return
-    }
-    setPurchasing(passId)
+    if (!token) { globalThis.location.href = '/login'; return }
+    setPaymentModal({ passId, passName, pricePerPerson, quantity: getQty(passId) })
+    setPayStatus('idle')
+    setPayError('')
+    setCardNumber('')
+    setExpiry('')
+    setCvc('')
+    setCardName('')
+  }
+
+  async function handlePaySubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!paymentModal) return
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) { globalThis.location.href = '/login'; return }
+
+    setPayStatus('processing')
+    setPayError('')
     try {
-      await purchasePass(passId, token)
-      setPurchased(prev => new Set([...prev, passId]))
+      const total = Math.round(paymentModal.pricePerPerson * paymentModal.quantity * 100)
+      const intent = await createPaymentIntent(total, 'pass', paymentModal.passId, token)
+      await confirmPayment(intent.paymentId, token)
+      await purchasePass(paymentModal.passId, token, paymentModal.quantity)
+      setPasses(prev =>
+        prev.map(pass =>
+          pass.id === paymentModal.passId
+            ? { ...pass, spotsLeft: Math.max(0, pass.spotsLeft - paymentModal.quantity) }
+            : pass
+        )
+      )
+      setQuantities(prev => ({ ...prev, [paymentModal.passId]: 1 }))
+      setPurchased(prev => new Set([...prev, paymentModal.passId]))
+      setPayStatus('done')
+      setTimeout(() => setPaymentModal(null), 1800)
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Purchase failed'
-      alert(message)
-    } finally {
-      setPurchasing(null)
+      setPayStatus('error')
+      setPayError(err instanceof Error ? err.message : 'Payment failed')
     }
   }
 
@@ -161,9 +141,9 @@ export default function PassesPage() {
             </p>
           </div>
           <div className={styles.heroStats}>
-            <div className={styles.hStat}><div className={styles.hStatN}>{PASSES.length}</div><div className={styles.hStatL}>PASSES</div></div>
-            <div className={styles.hStat}><div className={styles.hStatN} style={{ color: '#facc15' }}>{PASSES.filter(p => p.tier === 'PLATINUM').length}</div><div className={styles.hStatL}>PLATINUM</div></div>
-            <div className={styles.hStat}><div className={styles.hStatN} style={{ color: 'var(--red)' }}>{PASSES.filter(p => p.spotsLeft <= 5).length}</div><div className={styles.hStatL}>URGENT</div></div>
+            <div className={styles.hStat}><div className={styles.hStatN}>{passes.length}</div><div className={styles.hStatL}>PASSES</div></div>
+            <div className={styles.hStat}><div className={styles.hStatN} style={{ color: '#facc15' }}>{passes.filter(p => p.tier.toUpperCase().includes('PLATINUM')).length}</div><div className={styles.hStatL}>PLATINUM</div></div>
+            <div className={styles.hStat}><div className={styles.hStatN} style={{ color: 'var(--red)' }}>{passes.filter(p => p.spotsLeft <= 5).length}</div><div className={styles.hStatL}>URGENT</div></div>
           </div>
         </div>
 
@@ -198,7 +178,15 @@ export default function PassesPage() {
 
         {/* Pass Cards */}
         <div className={styles.passGrid}>
-          {filtered.map(pass => {
+          {loadingPasses ? (
+            <div style={{ gridColumn: '1/-1', padding: '60px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}>
+              LOADING PASSES...
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ gridColumn: '1/-1', padding: '60px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}>
+              NO PASSES MATCH YOUR FILTERS
+            </div>
+          ) : filtered.map(pass => {
             const accent = colorMap[pass.tierColor] ?? 'var(--cyan)'
             const isUrgent = pass.spotsLeft <= 5
             const isPurchased = purchased.has(pass.id)
@@ -227,14 +215,14 @@ export default function PassesPage() {
                     {pass.tier}
                   </div>
                   <div className={styles.catChip}>
-                    {catIcons[pass.category]} {pass.category}
+                    {catIcons[pass.category.toUpperCase()] ?? '🏁'} {pass.category.toUpperCase()}
                   </div>
                 </div>
 
                 {/* Event info */}
                 <div className={styles.cardEvent}>{pass.event}</div>
                 <div className={styles.cardLocation}>📍 {pass.location}</div>
-                <div className={styles.cardDate}>📅 {pass.date}</div>
+                <div className={styles.cardDate}>📅 {(() => { try { return new Date(pass.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return pass.date } })()}</div>
 
                 {/* Perks */}
                 <div className={styles.perksSection}>
@@ -261,19 +249,31 @@ export default function PassesPage() {
                   </div>
                 </div>
 
-                {/* Price + CTA */}
+                {/* Price + people selector + CTA */}
                 <div className={styles.cardBottom}>
                   <div className={styles.priceBlock}>
                     <span className={styles.priceFrom}>FROM</span>
                     <span className={styles.priceVal} style={{ color: accent }}>${pass.price.toLocaleString()}</span>
                   </div>
+
+                  {!isPurchased && (
+                    <div className={styles.peopleSelector}>
+                      <button className={styles.stepBtn} onClick={() => setQty(pass.id, getQty(pass.id) - 1)}>−</button>
+                      <span className={styles.stepCount}>{getQty(pass.id)}</span>
+                      <button className={styles.stepBtn} onClick={() => setQty(pass.id, getQty(pass.id) + 1)}>+</button>
+                      <span className={styles.stepLabel}>
+                        {getQty(pass.id) === 1 ? 'person' : 'people'}
+                      </span>
+                    </div>
+                  )}
+
                   <button
                     className={`${styles.purchaseBtn} ${isPurchased ? styles.purchaseBtnDone : ''}`}
                     style={!isPurchased ? { borderColor: accent, color: accent, background: `${accent}0d` } : {}}
-                    onClick={() => handlePurchase(pass.id)}
-                    disabled={purchasing === pass.id || isPurchased}
+                    onClick={() => !isPurchased && openPayment(pass.id, pass.event, pass.price)}
+                    disabled={isPurchased}
                   >
-                    {isPurchased ? '✓ PASS SECURED' : purchasing === pass.id ? 'PROCESSING...' : 'SECURE PASS →'}
+                    {isPurchased ? '✓ PASS SECURED' : `SECURE PASS · $${(pass.price * getQty(pass.id)).toLocaleString()} →`}
                   </button>
                 </div>
               </div>
@@ -290,6 +290,89 @@ export default function PassesPage() {
           <button className={styles.bannerBtn}>Contact Our Team →</button>
         </div>
       </main>
+
+      {/* Payment Modal */}
+      {paymentModal && (
+        <div className={styles.payModalOverlay} onClick={() => payStatus !== 'processing' && setPaymentModal(null)}>
+          <div className={styles.payModal} onClick={e => e.stopPropagation()}>
+            {payStatus === 'done' ? (
+              <div className={styles.payDone}>
+                <div className={styles.payDoneIcon}>✓</div>
+                <div className={styles.payDoneTitle}>Pass Secured!</div>
+                <div className={styles.payDoneSub}>{paymentModal.passName} × {paymentModal.quantity}</div>
+              </div>
+            ) : (
+              <>
+                <div className={styles.payModalHeader}>
+                  <div className={styles.payModalTitle}>SECURE YOUR PASS</div>
+                  <button className={styles.payModalClose} onClick={() => setPaymentModal(null)} disabled={payStatus === 'processing'}>✕</button>
+                </div>
+                <div className={styles.payOrderSummary}>
+                  <div className={styles.payOrderRow}>
+                    <span>{paymentModal.passName}</span>
+                    <span>${paymentModal.pricePerPerson.toLocaleString()} × {paymentModal.quantity}</span>
+                  </div>
+                  <div className={styles.payOrderTotal}>
+                    <span>TOTAL</span>
+                    <span>${(paymentModal.pricePerPerson * paymentModal.quantity).toLocaleString()}</span>
+                  </div>
+                </div>
+                <form className={styles.payForm} onSubmit={handlePaySubmit}>
+                  <div className={styles.payFormField}>
+                    <label className={styles.payLabel}>CARDHOLDER NAME</label>
+                    <input
+                      className={styles.payInput}
+                      placeholder="Full Name"
+                      value={cardName}
+                      onChange={e => setCardName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className={styles.payFormField}>
+                    <label className={styles.payLabel}>CARD NUMBER</label>
+                    <input
+                      className={styles.payInput}
+                      placeholder="1234 5678 9012 3456"
+                      value={cardNumber}
+                      onChange={e => setCardNumber(formatCardNumber(e.target.value))}
+                      maxLength={19}
+                      required
+                    />
+                  </div>
+                  <div className={styles.payFormRow}>
+                    <div className={styles.payFormField}>
+                      <label className={styles.payLabel}>EXPIRY</label>
+                      <input
+                        className={styles.payInput}
+                        placeholder="MM/YY"
+                        value={expiry}
+                        onChange={e => setExpiry(formatExpiry(e.target.value))}
+                        maxLength={5}
+                        required
+                      />
+                    </div>
+                    <div className={styles.payFormField}>
+                      <label className={styles.payLabel}>CVC</label>
+                      <input
+                        className={styles.payInput}
+                        placeholder="123"
+                        value={cvc}
+                        onChange={e => setCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        maxLength={4}
+                        required
+                      />
+                    </div>
+                  </div>
+                  {payError && <div className={styles.payError}>{payError}</div>}
+                  <button className={styles.paySubmitBtn} type="submit" disabled={payStatus === 'processing'}>
+                    {payStatus === 'processing' ? 'PROCESSING...' : `PAY $${(paymentModal.pricePerPerson * paymentModal.quantity).toLocaleString()}`}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   )
 }

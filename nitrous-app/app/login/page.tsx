@@ -1,16 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Nav from '@/components/Nav'
-import { login, register } from '@/lib/api'
+import { login, register, saveCart } from '@/lib/api'
+import type { CartItem } from '@/types'
 import styles from './login.module.css'
 
 type Mode = 'signin' | 'signup'
+const CART_STORAGE_KEY = 'nitrous_cart_v1'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [mode, setMode] = useState<Mode>('signin')
+  const searchParams = useSearchParams()
+  const [mode, setMode] = useState<Mode>(() => (searchParams.get('mode') === 'signup' ? 'signup' : 'signin'))
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -60,8 +63,54 @@ export default function LoginPage() {
         localStorage.setItem('nitrous_user', JSON.stringify(data.user))
       }
 
+      // Preserve intended role selection for post-payment activation.
+      if (mode === 'signup') {
+        localStorage.setItem('nitrous_signup_selected_role', formData.role)
+      }
+
+      // One-way sync only: guest local cart -> authenticated server cart on login/signup.
+      try {
+        const rawGuestCart = localStorage.getItem(CART_STORAGE_KEY)
+        if (rawGuestCart) {
+          const parsed = JSON.parse(rawGuestCart)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const items: CartItem[] = parsed
+              .filter((entry) => entry?.item?.id && typeof entry?.quantity === 'number')
+              .map((entry) => ({
+                merchId: entry.item.id,
+                name: entry.item.name,
+                icon: entry.item.icon,
+                price: entry.item.price,
+                category: entry.item.category,
+                quantity: Math.max(1, Math.floor(entry.quantity)),
+                size: entry.size,
+              }))
+
+            if (items.length > 0) {
+              await saveCart(items, data.token)
+            }
+          }
+          // Prevent authenticated cart data from leaking back into guest sessions.
+          localStorage.removeItem(CART_STORAGE_KEY)
+        }
+      } catch {
+        // Ignore cart sync errors; auth success should still continue.
+      }
+
       // Next.js standard for navigation
-      router.push('/')
+      if (mode === 'signup') {
+        if (formData.role === 'viewer') {
+          router.push('/')
+        } else if (formData.role === 'participant' || formData.role === 'manager') {
+          router.push(`/settings?upgrade=VIP&targetRole=${encodeURIComponent(formData.role)}`)
+        } else if (formData.role === 'sponsor') {
+          router.push('/settings?upgrade=PLATINUM&targetRole=sponsor')
+        } else {
+          router.push('/')
+        }
+      } else {
+        router.push('/')
+      }
       router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong')

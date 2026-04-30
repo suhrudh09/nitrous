@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'viewer',
     name TEXT NOT NULL,
+    plan TEXT NOT NULL DEFAULT 'FREE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -136,6 +137,7 @@ CREATE TABLE IF NOT EXISTS reminders (
     event_id UUID NOT NULL,
     message TEXT,
     remind_at TIMESTAMPTZ NOT NULL,
+    notified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_reminders_user
         FOREIGN KEY (user_id) REFERENCES users(id)
@@ -150,6 +152,24 @@ CREATE TABLE IF NOT EXISTS reminders (
 CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_event_id ON reminders(event_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_remind_at ON reminders(remind_at);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'info',
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_notifications_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_read_at ON notifications(read_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
 
 CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -184,6 +204,27 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_merch_item_id ON order_items(merch_item_id);
+
+CREATE TABLE IF NOT EXISTS cart_items (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL,
+    merch_item_id TEXT NOT NULL,
+    size TEXT NOT NULL DEFAULT '',
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_cart_items_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_cart_items_merch_item
+        FOREIGN KEY (merch_item_id) REFERENCES merch_items(id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT uq_cart_items_user_merch_size UNIQUE (user_id, merch_item_id, size)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cart_items_user_id ON cart_items(user_id);
 
 -- Garage user configurations
 CREATE TABLE IF NOT EXISTS garage_configs (

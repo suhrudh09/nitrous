@@ -21,6 +21,7 @@ func main() {
 
 	// Start external provider integrations (Jolpica, OpenF1, TheSportsDB)
 	handlers.StartExternalDataIntegration()
+	handlers.StartReminderNotifier()
 
 	// Create Gin router
 	r := gin.Default()
@@ -80,6 +81,7 @@ func main() {
 		journeys := api.Group("/journeys")
 		{
 			journeys.GET("", handlers.GetJourneys)
+			journeys.GET("/my", middleware.AuthMiddleware(), handlers.GetMyJourneyBookings)
 			journeys.GET("/:id", handlers.GetJourneyByID)
 			journeys.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateJourney)
 			journeys.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateJourney)
@@ -143,6 +145,13 @@ func main() {
 			reminders.DELETE("/:id", middleware.AuthMiddleware(), handlers.DeleteReminder)
 		}
 
+		// Notifications
+		notifications := api.Group("/notifications")
+		{
+			notifications.GET("", middleware.AuthMiddleware(), handlers.GetMyNotifications)
+			notifications.POST("/:id/read", middleware.AuthMiddleware(), handlers.MarkNotificationRead)
+		}
+
 		// Orders
 		orders := api.Group("/orders")
 		{
@@ -152,10 +161,19 @@ func main() {
 			orders.DELETE("/:id", middleware.AuthMiddleware(), handlers.CancelOrder)
 		}
 
+		// Cart
+		cart := api.Group("/cart")
+		{
+			cart.GET("", middleware.AuthMiddleware(), handlers.GetCart)
+			cart.PUT("", middleware.AuthMiddleware(), handlers.SaveCart)
+			cart.DELETE("", middleware.AuthMiddleware(), handlers.ClearCart)
+		}
+
 		// Passes
 		passes := api.Group("/passes")
 		{
 			passes.GET("", middleware.AuthMiddleware(), handlers.GetMyPasses)
+			passes.GET("/catalog", handlers.GetAllPasses)
 			passes.POST("/:id/purchase", middleware.AuthMiddleware(), handlers.PurchasePass)
 		}
 
@@ -165,6 +183,8 @@ func main() {
 			auth.POST("/register", handlers.Register)
 			auth.POST("/login", handlers.Login)
 			auth.GET("/me", middleware.AuthMiddleware(), handlers.GetCurrentUser)
+			auth.PUT("/me/plan", middleware.AuthMiddleware(), handlers.UpdateCurrentUserPlan)
+			auth.PUT("/me/role", middleware.AuthMiddleware(), handlers.UpdateCurrentUserRole)
 		}
 
 		// Garage Configs

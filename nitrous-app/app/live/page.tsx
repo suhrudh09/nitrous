@@ -47,8 +47,9 @@ export default function LivePage() {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      hour: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
       timeZoneName: 'short',
     }).format(parsed)
   }
@@ -137,8 +138,9 @@ export default function LivePage() {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
-      hour: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
     }).format(eventDate)
   }
 
@@ -150,8 +152,9 @@ export default function LivePage() {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      hour: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
       timeZoneName: 'short',
     }).format(eventDate)
   }
@@ -435,7 +438,7 @@ export default function LivePage() {
           </div>
           <div className={styles.headerStats}>
             <div className={styles.stat}>
-              <span className={styles.statVal}>{streams.length}</span>
+              <span className={styles.statVal}>{liveStreams.length}</span>
               <span className={styles.statLabel}>LIVE</span>
             </div>
             <div className={styles.statDivider}></div>

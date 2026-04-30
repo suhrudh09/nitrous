@@ -35,6 +35,7 @@ var (
 	Teams         []models.Team
 	Reminders     []models.Reminder
 	Orders        []models.Order
+	CartItems     map[string][]models.CartItem
 	GarageConfigs map[string][]models.GarageConfig
 	Payments      []models.Payment
 )
@@ -141,6 +142,36 @@ func migratePostgres() error {
 		return fmt.Errorf("apply schema: %w", err)
 	}
 
+	if _, err := DB.Exec(`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ`); err != nil {
+		return fmt.Errorf("ensure reminders.notified_at column: %w", err)
+	}
+
+	if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'FREE'`); err != nil {
+		return fmt.Errorf("ensure users.plan column: %w", err)
+	}
+
+	if _, err := DB.Exec(`ALTER TABLE pass_purchases ADD COLUMN IF NOT EXISTS quantity INT NOT NULL DEFAULT 1`); err != nil {
+		return fmt.Errorf("ensure pass_purchases.quantity column: %w", err)
+	}
+
+	if _, err := DB.Exec(`
+		CREATE TABLE IF NOT EXISTS journey_bookings (
+			id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id     UUID NOT NULL,
+			journey_id  UUID NOT NULL,
+			quantity    INT  NOT NULL DEFAULT 1,
+			booked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT fk_jb_user    FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE,
+			CONSTRAINT fk_jb_journey FOREIGN KEY (journey_id) REFERENCES journeys(id) ON DELETE CASCADE
+		)
+	`); err != nil {
+		return fmt.Errorf("ensure journey_bookings table: %w", err)
+	}
+
+	if _, err := DB.Exec(`CREATE INDEX IF NOT EXISTS idx_journey_bookings_user_id ON journey_bookings(user_id)`); err != nil {
+		return fmt.Errorf("ensure journey_bookings user index: %w", err)
+	}
+
 	seedSQL, err := dbFiles.ReadFile("seed.sql")
 	if err != nil {
 		return err
@@ -181,13 +212,14 @@ func loadSeedDataFromPostgres() error {
 
 	Reminders = []models.Reminder{}
 	Orders = []models.Order{}
+	CartItems = map[string][]models.CartItem{}
 	PassPurchases = []PassPurchase{}
 
 	return nil
 }
 
 func loadUsersFromPostgres() error {
-	rows, err := DB.Query(`SELECT id, email, password_hash, role, name, created_at FROM users ORDER BY email`)
+	rows, err := DB.Query(`SELECT id, email, password_hash, role, name, COALESCE(plan, 'FREE'), created_at FROM users ORDER BY email`)
 	if err != nil {
 		return err
 	}
@@ -196,7 +228,7 @@ func loadUsersFromPostgres() error {
 	Users = make([]models.User, 0)
 	for rows.Next() {
 		var user models.User
-		if err := rows.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.Name, &user.CreatedAt); err != nil {
+		if err := rows.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.Name, &user.Plan, &user.CreatedAt); err != nil {
 			return err
 		}
 		Users = append(Users, user)
@@ -423,6 +455,7 @@ func seedUsers() {
 			PasswordHash: string(passwordHash),
 			Role:         "viewer",
 			Name:         "Viewer User",
+			Plan:         "FREE",
 			CreatedAt:    time.Now(),
 		},
 		{
@@ -431,6 +464,7 @@ func seedUsers() {
 			PasswordHash: string(passwordHash),
 			Role:         "participant",
 			Name:         "Participant User",
+			Plan:         "VIP",
 			CreatedAt:    time.Now(),
 		},
 		{
@@ -439,6 +473,7 @@ func seedUsers() {
 			PasswordHash: string(passwordHash),
 			Role:         "manager",
 			Name:         "Manager User",
+			Plan:         "VIP",
 			CreatedAt:    time.Now(),
 		},
 		{
@@ -447,6 +482,7 @@ func seedUsers() {
 			PasswordHash: string(passwordHash),
 			Role:         "sponsor",
 			Name:         "Sponsor User",
+			Plan:         "PLATINUM",
 			CreatedAt:    time.Now(),
 		},
 		{
@@ -455,6 +491,7 @@ func seedUsers() {
 			PasswordHash: string(passwordHash),
 			Role:         "admin",
 			Name:         "Admin User",
+			Plan:         "PLATINUM",
 			CreatedAt:    time.Now(),
 		},
 	}

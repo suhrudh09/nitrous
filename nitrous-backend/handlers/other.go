@@ -363,9 +363,12 @@ func BookJourney(c *gin.Context) {
 		currentUserRole = v.(string)
 	}
 
+	callerUserID, _ := c.Get("userID")
+
 	// optional body to allow booking on behalf of another user (manager/admin only)
 	var body struct {
-		UserID string `json:"userId,omitempty"`
+		UserID   string `json:"userId,omitempty"`
+		Quantity int    `json:"quantity,omitempty"`
 	}
 	if c.Request.ContentLength > 0 {
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -373,13 +376,18 @@ func BookJourney(c *gin.Context) {
 			return
 		}
 	}
+	if body.Quantity < 1 {
+		body.Quantity = 1
+	}
 
+	targetUserID := callerUserID.(string)
 	if body.UserID != "" {
 		// only manager or admin can book for others
 		if currentUserRole != "admin" && currentUserRole != "manager" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "only managers or admins can register other users"})
 			return
 		}
+		targetUserID = body.UserID
 	} else {
 		// self-registration: participants not allowed
 		if currentUserRole == "participant" {
@@ -388,8 +396,8 @@ func BookJourney(c *gin.Context) {
 		}
 	}
 	if database.DB != nil {
-		// Attempt to decrement slots atomically
-		res, err := database.DB.Exec(`UPDATE journeys SET slots_left = slots_left - 1 WHERE id = $1 AND slots_left > 0`, id)
+		// Attempt to decrement slots atomically by quantity
+		res, err := database.DB.Exec(`UPDATE journeys SET slots_left = slots_left - $1 WHERE id = $2 AND slots_left >= $1`, body.Quantity, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -407,9 +415,16 @@ func BookJourney(c *gin.Context) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Journey not found"})
 				return
 			}
-			c.JSON(http.StatusBadRequest, gin.H{"error": "No slots available"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough slots available"})
 			return
 		}
+
+		// Record the booking
+		_, _ = database.DB.Exec(`
+			INSERT INTO journey_bookings (user_id, journey_id, quantity, booked_at)
+			VALUES ($1, $2, $3, NOW())
+		`, targetUserID, id, body.Quantity)
+
 		var j models.Journey
 		row := database.DB.QueryRow(`SELECT id, title, category, description, COALESCE(badge, ''), slots_left, date, price::float8, COALESCE(thumbnail_url, '') FROM journeys WHERE id = $1`, id)
 		if err := row.Scan(&j.ID, &j.Title, &j.Category, &j.Description, &j.Badge, &j.SlotsLeft, &j.Date, &j.Price, &j.ThumbnailURL); err != nil {
@@ -425,12 +440,12 @@ func BookJourney(c *gin.Context) {
 
 	for i, journey := range database.Journeys {
 		if journey.ID == id {
-			if journey.SlotsLeft <= 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "No slots available"})
+			if journey.SlotsLeft < body.Quantity {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough slots available"})
 				return
 			}
 
-			database.Journeys[i].SlotsLeft--
+			database.Journeys[i].SlotsLeft -= body.Quantity
 
 			c.JSON(http.StatusOK, gin.H{"message": "Journey booked successfully", "journey": database.Journeys[i]})
 			return
@@ -438,6 +453,60 @@ func BookJourney(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusNotFound, gin.H{"error": "Journey not found"})
+}
+
+// GetMyJourneyBookings returns all journey bookings for the authenticated user
+func GetMyJourneyBookings(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	if database.DB != nil {
+		rows, err := database.DB.Query(`
+			SELECT j.id, j.title, j.category, j.description, COALESCE(j.badge,''), j.slots_left,
+			       j.date, j.price::float8, COALESCE(j.thumbnail_url,''),
+			       jb.id, jb.quantity, jb.booked_at
+			FROM journey_bookings jb
+			JOIN journeys j ON jb.journey_id = j.id
+			WHERE jb.user_id = $1
+			ORDER BY jb.booked_at DESC
+		`, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		type JourneyBookingRow struct {
+			models.Journey
+			BookingID string `json:"bookingId"`
+			Quantity  int    `json:"quantity"`
+			BookedAt  string `json:"bookedAt"`
+		}
+
+		bookings := make([]JourneyBookingRow, 0)
+		for rows.Next() {
+			var jb JourneyBookingRow
+			var bookedAt time.Time
+			if err := rows.Scan(
+				&jb.ID, &jb.Title, &jb.Category, &jb.Description, &jb.Badge, &jb.SlotsLeft,
+				&jb.Date, &jb.Price, &jb.ThumbnailURL,
+				&jb.BookingID, &jb.Quantity, &bookedAt,
+			); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			jb.BookedAt = bookedAt.Format(time.RFC3339)
+			bookings = append(bookings, jb)
+		}
+		c.JSON(http.StatusOK, gin.H{"bookings": bookings, "count": len(bookings)})
+		return
+	}
+
+	// In-memory fallback: no booking records stored, return empty
+	c.JSON(http.StatusOK, gin.H{"bookings": []interface{}{}, "count": 0})
 }
 
 // GetMerchItems returns all merch items
