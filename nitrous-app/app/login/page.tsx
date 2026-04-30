@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Nav from '@/components/Nav'
 import { login, register, saveCart } from '@/lib/api'
@@ -10,7 +10,7 @@ import styles from './login.module.css'
 type Mode = 'signin' | 'signup'
 const CART_STORAGE_KEY = 'nitrous_cart_v1'
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [mode, setMode] = useState<Mode>(() => (searchParams.get('mode') === 'signup' ? 'signup' : 'signin'))
@@ -292,5 +292,13 @@ export default function LoginPage() {
         </div>
       </main>
     </>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
   )
 }
