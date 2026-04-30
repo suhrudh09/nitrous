@@ -12,9 +12,46 @@ import type {
   AuthResponse,
   Order,
   OrderItem,
+  CartItem,
+  PaymentIntentResponse,
+  Reminder,
+  Notification,
 } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'
+
+// ── Pass interfaces ───────────────────────────────────────────────────────────
+export interface AvailablePass {
+  id: string
+  tier: string
+  event: string
+  location: string
+  date: string
+  category: string
+  price: number
+  perks: string[]
+  spotsLeft: number
+  totalSpots: number
+  badge?: string | null
+  tierColor: string
+}
+
+export interface UserPass {
+  purchaseId: string
+  createdAt: string
+  id: string
+  tier: string
+  event: string
+  location: string
+  date: string
+  category: string
+  price: number
+  perks: string[]
+  spotsLeft: number
+  totalSpots: number
+  badge?: string
+  tierColor: string
+}
 
 // ── Generic fetch wrapper ──────────────────────────────────────────────────────
 
@@ -74,21 +111,56 @@ export async function getEventById(id: string): Promise<Event> {
 }
 
 export async function setReminder(
-  eventId: string,
+  input: {
+    eventId: string
+    remindAt: string
+    message?: string
+  },
   token: string
-): Promise<{ message: string }> {
-  return fetchAPI<{ message: string }>(`/events/${eventId}/remind`, {
+): Promise<Reminder> {
+  return fetchAPI<Reminder>('/reminders', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
   })
 }
 
 export async function deleteReminder(
-  eventId: string,
+  reminderId: string,
   token: string
 ): Promise<{ message: string }> {
-  return fetchAPI<{ message: string }>(`/events/${eventId}/remind`, {
+  return fetchAPI<{ message: string }>(`/reminders/${reminderId}`, {
     method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function getMyReminders(token: string): Promise<Reminder[]> {
+  const data = await fetchAPI<{ reminders: Reminder[]; count: number }>('/reminders', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return data.reminders ?? []
+}
+
+export async function getNotifications(
+  token: string
+): Promise<{ notifications: Notification[]; unread: number }> {
+  const data = await fetchAPI<{ notifications: Notification[]; count: number; unread: number }>('/notifications', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return {
+    notifications: data.notifications ?? [],
+    unread: data.unread ?? 0,
+  }
+}
+
+export async function markNotificationRead(
+  notificationId: string,
+  token: string
+): Promise<{ message: string; readAt: string }> {
+  return fetchAPI<{ message: string; readAt: string }>(`/notifications/${notificationId}/read`, {
+    method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
 }
@@ -118,14 +190,23 @@ export async function getJourneyById(id: string): Promise<Journey> {
 export async function bookJourney(
   id: string,
   token: string,
-  userId?: string
+  userId?: string,
+  quantity = 1
 ): Promise<{ message: string; journey: Journey }> {
-  const body = userId ? { userId } : {}
+  const body: Record<string, unknown> = { quantity }
+  if (userId) body.userId = userId
   return fetchAPI<{ message: string; journey: Journey }>(`/journeys/${id}/book`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   })
+}
+
+export async function getMyJourneyBookings(token: string): Promise<import('@/types').JourneyBooking[]> {
+  const data = await fetchAPI<{ bookings: import('@/types').JourneyBooking[]; count: number }>('/journeys/my', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return data.bookings ?? []
 }
 
 // ── Merch ─────────────────────────────────────────────────────────────────────
@@ -188,8 +269,8 @@ export async function getTeamById(id: string): Promise<Team> {
 export async function followTeam(
   id: string,
   token: string
-): Promise<{ message: string; following: number }> {
-  return fetchAPI<{ message: string; following: number }>(`/teams/${id}/follow`, {
+): Promise<{ message: string; team: Team }> {
+  return fetchAPI<{ message: string; team: Team }>(`/teams/${id}/follow`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -198,9 +279,9 @@ export async function followTeam(
 export async function unfollowTeam(
   id: string,
   token: string
-): Promise<{ message: string; following: number }> {
-  return fetchAPI<{ message: string; following: number }>(`/teams/${id}/follow`, {
-    method: 'DELETE',
+): Promise<{ message: string; team: Team }> {
+  return fetchAPI<{ message: string; team: Team }>(`/teams/${id}/unfollow`, {
+    method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   })
 }
@@ -379,10 +460,136 @@ export async function createOrder(
 }
 
 export async function getMyOrders(token: string): Promise<Order[]> {
-  const data = await fetchAPI<{ orders: Order[]; count: number }>('/orders', {
+  const data = await fetchAPI<{ orders: any[]; count: number }>('/orders', {
     headers: { Authorization: `Bearer ${token}` },
   })
-  return data.orders ?? []
+
+  return (data.orders ?? []).map((rawOrder) => {
+    const merchIds = Array.isArray(rawOrder?.merchItemIds) ? rawOrder.merchItemIds : []
+    const quantities = Array.isArray(rawOrder?.quantities) ? rawOrder.quantities : []
+    const unitPrices = Array.isArray(rawOrder?.unitPrices) ? rawOrder.unitPrices : []
+
+    const items: OrderItem[] = Array.isArray(rawOrder?.items)
+      ? rawOrder.items
+      : merchIds.map((merchId: string, index: number) => ({
+          merchId,
+          name: '',
+          price: typeof unitPrices[index] === 'number' ? unitPrices[index] : 0,
+          quantity: typeof quantities[index] === 'number' ? quantities[index] : 0,
+        }))
+
+    return {
+      id: rawOrder.id,
+      userId: rawOrder.userId,
+      items,
+      total: typeof rawOrder.total === 'number' ? rawOrder.total : 0,
+      status: rawOrder.status,
+      createdAt: rawOrder.createdAt,
+    }
+  })
+}
+
+export async function getAvailablePasses(): Promise<AvailablePass[]> {
+  const data = await fetchAPI<{ passes: AvailablePass[]; count: number }>('/passes/catalog')
+  return (data.passes ?? []).map((pass) => ({
+    ...pass,
+    perks: Array.isArray(pass.perks) ? pass.perks : [],
+    badge: pass.badge ?? undefined,
+  }))
+}
+
+export async function getMyPasses(token: string): Promise<UserPass[]> {
+  const data = await fetchAPI<{
+    purchases: Array<{
+      purchaseId: string
+      createdAt: string
+      pass: {
+        id: string
+        tier: string
+        event: string
+        location: string
+        date: string
+        category: string
+        price: number
+        perks?: string[] | null
+        spotsLeft: number
+        totalSpots: number
+        badge?: string | null
+        tierColor: string
+      }
+    }>
+    count: number
+  }>('/passes', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return (data.purchases ?? []).map((purchase) => ({
+    purchaseId: purchase.purchaseId,
+    createdAt: purchase.createdAt,
+    id: purchase.pass.id,
+    tier: purchase.pass.tier,
+    event: purchase.pass.event,
+    location: purchase.pass.location,
+    date: purchase.pass.date,
+    category: purchase.pass.category,
+    price: purchase.pass.price,
+    perks: Array.isArray(purchase.pass.perks) ? purchase.pass.perks : [],
+    spotsLeft: purchase.pass.spotsLeft,
+    totalSpots: purchase.pass.totalSpots,
+    badge: purchase.pass.badge ?? undefined,
+    tierColor: purchase.pass.tierColor,
+  }))
+}
+
+// ── Cart ──────────────────────────────────────────────────────────────────────
+
+export async function getCart(token: string): Promise<CartItem[]> {
+  const data = await fetchAPI<{ items: CartItem[]; count: number }>('/cart', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return data.items ?? []
+}
+
+export async function saveCart(items: CartItem[], token: string): Promise<CartItem[]> {
+  const data = await fetchAPI<{ items: CartItem[]; count: number }>('/cart', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ items }),
+  })
+  return data.items ?? []
+}
+
+export async function clearCart(token: string): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>('/cart', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+
+export async function createPaymentIntent(
+  amount: number,
+  referenceType: string,
+  referenceId: string,
+  token: string,
+  currency = 'usd'
+): Promise<PaymentIntentResponse> {
+  return fetchAPI<PaymentIntentResponse>('/payments/create-intent', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ amount, currency, referenceType, referenceId }),
+  })
+}
+
+export async function confirmPayment(
+  paymentId: string,
+  token: string
+): Promise<{ message: string }> {
+  return fetchAPI<{ message: string }>(`/payments/${paymentId}/confirm`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -414,12 +621,95 @@ export async function getCurrentUser(token: string): Promise<User> {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+export async function updateCurrentUserPlan(
+  plan: 'FREE' | 'VIP' | 'PLATINUM',
+  token: string
+): Promise<User> {
+  const data = await fetchAPI<{ user: User; message: string }>('/auth/me/plan', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ plan }),
+  })
+  return data.user
+}
+
+export async function updateCurrentUserRole(
+  role: 'viewer' | 'participant' | 'manager' | 'sponsor',
+  token: string
+): Promise<User> {
+  const data = await fetchAPI<{ user: User; message: string }>('/auth/me/role', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ role }),
+  })
+  return data.user
+}
 export async function purchasePass(
   id: string,
-  token: string
-): Promise<{ message: string; passId: string }> {
-  return fetchAPI<{ message: string; passId: string }>(`/passes/${id}/purchase`, {
+  token: string,
+  quantity = 1
+): Promise<{ message: string; passId: string; quantity: number }> {
+  return fetchAPI<{ message: string; passId: string; quantity: number }>(`/passes/${id}/purchase`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ quantity }),
   })
+}
+
+export async function getOrderById(orderId: string, token: string): Promise<Order> {
+  const rawOrder = await fetchAPI<any>(`/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  const merchIds = Array.isArray(rawOrder?.merchItemIds) ? rawOrder.merchItemIds : []
+  const quantities = Array.isArray(rawOrder?.quantities) ? rawOrder.quantities : []
+  const unitPrices = Array.isArray(rawOrder?.unitPrices) ? rawOrder.unitPrices : []
+
+  const items: OrderItem[] = Array.isArray(rawOrder?.items)
+    ? rawOrder.items
+    : merchIds.map((merchId: string, index: number) => ({
+        merchId,
+        name: '',
+        price: typeof unitPrices[index] === 'number' ? unitPrices[index] : 0,
+        quantity: typeof quantities[index] === 'number' ? quantities[index] : 0,
+      }))
+
+  return {
+    id: rawOrder.id,
+    userId: rawOrder.userId,
+    items,
+    total: typeof rawOrder.total === 'number' ? rawOrder.total : 0,
+    status: rawOrder.status,
+    createdAt: rawOrder.createdAt,
+  }
+}
+
+export async function cancelOrder(orderId: string, token: string): Promise<Order> {
+  const rawOrder = await fetchAPI<any>(`/orders/${orderId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  const merchIds = Array.isArray(rawOrder?.merchItemIds) ? rawOrder.merchItemIds : []
+  const quantities = Array.isArray(rawOrder?.quantities) ? rawOrder.quantities : []
+  const unitPrices = Array.isArray(rawOrder?.unitPrices) ? rawOrder.unitPrices : []
+
+  const items: OrderItem[] = Array.isArray(rawOrder?.items)
+    ? rawOrder.items
+    : merchIds.map((merchId: string, index: number) => ({
+        merchId,
+        name: '',
+        price: typeof unitPrices[index] === 'number' ? unitPrices[index] : 0,
+        quantity: typeof quantities[index] === 'number' ? quantities[index] : 0,
+      }))
+
+  return {
+    id: rawOrder.id,
+    userId: rawOrder.userId,
+    items,
+    total: typeof rawOrder.total === 'number' ? rawOrder.total : 0,
+    status: rawOrder.status,
+    createdAt: rawOrder.createdAt,
+  }
 }

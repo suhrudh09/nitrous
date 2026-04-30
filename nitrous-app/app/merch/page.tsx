@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Nav from '@/components/Nav'
-import { getMerchItems, createOrder } from '@/lib/api'
-import type { MerchItem, OrderItem } from '@/types'
+import { getMerchItems, getCart, saveCart } from '@/lib/api'
+import type { MerchItem, CartItem as APICartItem } from '@/types'
 import styles from './merch.module.css'
 
 const cats = ['all', 'apparel', 'accessories', 'collectibles']
@@ -21,8 +22,10 @@ interface CartEntry {
 }
 
 const CART_STORAGE_KEY = 'nitrous_cart_v1'
+const CART_UPDATED_EVENT = 'nitrous-cart-updated'
 
 export default function MerchPage() {
+  const router = useRouter()
   const [products, setProducts] = useState<MerchItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -31,19 +34,38 @@ export default function MerchPage() {
   // cart stores CartEntry objects so we can pass correctly-typed OrderItem[] to createOrder
   const [cart, setCart] = useState<CartEntry[]>([])
   const [added, setAdded] = useState<string | null>(null)
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
-  const [checkoutMsg, setCheckoutMsg] = useState('')
-  const [showSizeModal, setShowSizeModal] = useState(false)
-  const [selectedItemForSize, setSelectedItemForSize] = useState<MerchItem | null>(null)
+  const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({})
 
   const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
+  const toAPICartItems = (entries: CartEntry[]): APICartItem[] =>
+    entries.map((entry) => ({
+      merchId: entry.item.id,
+      name: entry.item.name,
+      icon: entry.item.icon,
+      price: entry.item.price,
+      category: entry.item.category,
+      quantity: entry.quantity,
+      size: entry.size,
+    }))
+
   const persistCart = (nextCart: CartEntry[]) => {
+    const token = localStorage.getItem('nitrous_token')
+
     try {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextCart))
+      // Guest carts persist in localStorage; authenticated carts live on the backend only.
+      if (!token) {
+        localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextCart))
+      }
+      window.dispatchEvent(new Event(CART_UPDATED_EVENT))
     } catch {
       // Ignore persistence errors (quota/private mode), keep cart in memory.
     }
+
+    if (!token) return
+    saveCart(toAPICartItems(nextCart), token).catch(() => {
+      // Keep local state if backend cart sync fails.
+    })
   }
 
   useEffect(() => {
@@ -76,6 +98,28 @@ export default function MerchPage() {
     } catch {
       localStorage.removeItem(CART_STORAGE_KEY)
     }
+
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) return
+
+    getCart(token)
+      .then((items) => {
+        const remoteCart: CartEntry[] = items.map((entry) => ({
+          item: {
+            id: entry.merchId,
+            name: entry.name,
+            icon: entry.icon,
+            price: entry.price,
+            category: entry.category as MerchItem['category'],
+          },
+          quantity: entry.quantity,
+          size: entry.size || undefined,
+        }))
+        setCart(remoteCart)
+      })
+      .catch(() => {
+        // Keep local cart when backend cart load fails.
+      })
   }, [])
 
   useEffect(() => {
@@ -109,74 +153,54 @@ export default function MerchPage() {
   const filtered =
     filter === 'all' ? products : products.filter((p) => p.category === filter)
 
-  function addToCart(item: MerchItem) {
-    // Show size modal for apparel items
-    if (item.category === 'apparel') {
-      setSelectedItemForSize(item)
-      setShowSizeModal(true)
-      return
-    }
-
-    // For non-apparel items, add directly
-    addToCartWithSize(item, undefined)
+  function getSelectedSize(item: MerchItem): string | undefined {
+    if (item.category !== 'apparel') return undefined
+    return selectedSizes[item.id] ?? SIZES[0]
   }
 
-  function addToCartWithSize(item: MerchItem, size?: string) {
-    setCart((prev) => {
-      const existing = prev.find((e) => e.item.id === item.id && e.size === size)
-      let next: CartEntry[]
-      if (existing) {
-        next = prev.map((e) =>
-          e.item.id === item.id && e.size === size ? { ...e, quantity: e.quantity + 1 } : e
-        )
-      } else {
-        next = [...prev, { item, quantity: 1, size }]
-      }
-      persistCart(next)
-      return next
-    })
+  function addToCartWithSize(item: MerchItem, size?: string, quantityToAdd = 1) {
+    const safeQuantity = Math.max(1, Math.floor(quantityToAdd))
+    const existing = cart.find((e) => e.item.id === item.id && e.size === size)
+    let next: CartEntry[]
+    if (existing) {
+      next = cart.map((e) =>
+        e.item.id === item.id && e.size === size ? { ...e, quantity: e.quantity + safeQuantity } : e
+      )
+    } else {
+      next = [...cart, { item, quantity: safeQuantity, size }]
+    }
+
+    setCart(next)
+    persistCart(next)
     setAdded(item.id)
     setTimeout(() => setAdded(null), 1200)
   }
 
-  function handleSizeSelect(size: string) {
-    if (selectedItemForSize) {
-      addToCartWithSize(selectedItemForSize, size)
-      setShowSizeModal(false)
-      setSelectedItemForSize(null)
+  function updateCartQuantity(item: MerchItem, size: string | undefined, delta: number) {
+    const existing = cart.find((e) => e.item.id === item.id && e.size === size)
+    if (!existing) return
+
+    const nextQuantity = existing.quantity + delta
+    let next: CartEntry[]
+    if (nextQuantity <= 0) {
+      next = cart.filter((e) => !(e.item.id === item.id && e.size === size))
+    } else {
+      next = cart.map((e) =>
+        e.item.id === item.id && e.size === size ? { ...e, quantity: nextQuantity } : e
+      )
     }
+
+    setCart(next)
+    persistCart(next)
   }
 
-  async function handleCheckout() {
-    const token = localStorage.getItem('nitrous_token')
-    if (!token) {
-      globalThis.location.href = '/login'
-      return
-    }
-    if (cart.length === 0) return
+  function setCardSize(productId: string, size: string) {
+    setSelectedSizes((prev) => ({ ...prev, [productId]: size }))
+  }
 
-    // Build correctly-typed OrderItem[] for the API
-    const orderItems: OrderItem[] = cart.map((entry) => ({
-      merchId: entry.item.id,
-      name: entry.item.name,
-      price: entry.item.price,
-      quantity: entry.quantity,
-      size: entry.size,
-    }))
-
-    setCheckoutLoading(true)
-    setCheckoutMsg('')
-    try {
-      const result = await createOrder(orderItems, token)
-      setCart([])
-      persistCart([])
-      setCheckoutMsg(`✓ Order #${result.order.id.slice(0, 8).toUpperCase()} placed — total $${result.order.total}`)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Checkout failed'
-      setCheckoutMsg(`✗ ${message}`)
-    } finally {
-      setCheckoutLoading(false)
-    }
+  function getCartQuantity(item: MerchItem, size: string | undefined): number {
+    const entry = cart.find((e) => e.item.id === item.id && e.size === size)
+    return entry?.quantity ?? 0
   }
 
   const totalItems = cart.reduce((acc, e) => acc + e.quantity, 0)
@@ -218,25 +242,12 @@ export default function MerchPage() {
             <h1 className={styles.pageTitle}>TEAM STORE</h1>
             <p className={styles.pageSubtitle}>Official gear, limited drops, and collector pieces</p>
           </div>
-          <div className={styles.cartBadge} onClick={handleCheckout} style={{ cursor: totalItems > 0 ? 'pointer' : 'default' }}>
+          <div className={styles.cartBadge} onClick={() => router.push('/cart')} style={{ cursor: 'pointer' }}>
             <span className={styles.cartIcon}>🛒</span>
             <span className={styles.cartCount}>{totalItems}</span>
-            <span className={styles.cartLabel}>{checkoutLoading ? 'PLACING...' : 'CART'}</span>
+            <span className={styles.cartLabel}>PLACE ORDER</span>
           </div>
         </div>
-
-        {checkoutMsg && (
-          <div
-            style={{
-              padding: '12px 48px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '13px',
-              color: checkoutMsg.startsWith('✓') ? 'var(--cyan)' : 'var(--red)',
-            }}
-          >
-            {checkoutMsg}
-          </div>
-        )}
 
         {/* Filter tabs */}
         <div className={styles.filterBar}>
@@ -256,8 +267,11 @@ export default function MerchPage() {
 
         {/* Products Grid */}
         <div className={styles.productsGrid}>
-          {filtered.map((product) => (
-            <div key={product.id} className={styles.productCard}>
+          {filtered.map((product) => {
+            const selectedSize = getSelectedSize(product)
+            const quantityInCart = getCartQuantity(product, selectedSize)
+
+            return <div key={product.id} className={styles.productCard}>
               {/* Product visual */}
               <div className={styles.productVisual}>
                 <div className={styles.productIcon}>{product.icon}</div>
@@ -266,19 +280,56 @@ export default function MerchPage() {
               <div className={styles.productInfo}>
                 <div className={styles.productCat}>{product.category}</div>
                 <div className={styles.productName}>{product.name}</div>
+                {product.category === 'apparel' ? (
+                  <div className={styles.sizes}>
+                    {SIZES.map((size) => {
+                      const active = (selectedSizes[product.id] ?? SIZES[0]) === size
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          className={`${styles.sizeChip} ${active ? styles.sizeChipActive : ''}`}
+                          onClick={() => setCardSize(product.id, size)}
+                        >
+                          {size}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.productBottom}>
                 <div className={styles.productPrice}>${product.price}</div>
-                <button
-                  className={`${styles.addBtn} ${added === product.id ? styles.addBtnSuccess : ''}`}
-                  onClick={() => addToCart(product)}
-                >
-                  {added === product.id ? '✓ ADDED' : '+ ADD TO CART'}
-                </button>
+                {quantityInCart > 0 ? (
+                  <div className={styles.itemQuantity}>
+                    <button
+                      type="button"
+                      className={styles.qtyBtn}
+                      onClick={() => updateCartQuantity(product, selectedSize, -1)}
+                    >
+                      -
+                    </button>
+                    <span className={styles.qtyValue}>{quantityInCart}</span>
+                    <button
+                      type="button"
+                      className={styles.qtyBtn}
+                      onClick={() => updateCartQuantity(product, selectedSize, 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className={`${styles.addBtn} ${added === product.id ? styles.addBtnSuccess : ''}`}
+                    onClick={() => addToCartWithSize(product, selectedSize, 1)}
+                  >
+                    {added === product.id ? '✓ ADDED' : '+ ADD TO CART'}
+                  </button>
+                )}
               </div>
             </div>
-          ))}
+          })}
         </div>
 
         {/* Bottom banner */}
@@ -298,36 +349,6 @@ export default function MerchPage() {
             <span className={styles.promoCta}>Subscribe for early access</span>
           </div>
         </div>
-
-        {/* Size Selection Modal */}
-        {showSizeModal && selectedItemForSize && (
-          <div className={styles.sizeModalOverlay} onClick={() => setShowSizeModal(false)}>
-            <div className={styles.sizeModal} onClick={(e) => e.stopPropagation()}>
-              <button className={styles.sizeModalClose} onClick={() => setShowSizeModal(false)}>×</button>
-              <div className={styles.sizeModalHeader}>
-                <span className={styles.sizeModalIcon}>{selectedItemForSize.icon}</span>
-                <div>
-                  <div className={styles.sizeModalName}>{selectedItemForSize.name}</div>
-                  <div className={styles.sizeModalPrice}>${selectedItemForSize.price}</div>
-                </div>
-              </div>
-              <div className={styles.sizeModalBody}>
-                <div className={styles.sizeModalLabel}>Select Size</div>
-                <div className={styles.sizeGrid}>
-                  {SIZES.map((size) => (
-                    <button
-                      key={size}
-                      className={styles.sizeBtn}
-                      onClick={() => handleSizeSelect(size)}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </>
   )

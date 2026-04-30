@@ -296,6 +296,17 @@
   opacity: 0.7;
 }
 
+.followBtnFollowing {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(255, 42, 42, 0.08);
+}
+
+.followBtnFollowing:hover {
+  opacity: 1;
+  background: rgba(255, 42, 42, 0.14);
+}
+
 @media (max-width: 768px) {
   .pageHeader { padding: 32px 24px 24px; }
   .rankBanner { padding: 14px 24px; }

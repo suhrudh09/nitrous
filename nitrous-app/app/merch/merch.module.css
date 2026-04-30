@@ -229,6 +229,7 @@
 }
 
 .sizeChip {
+  background: transparent;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--muted);
@@ -242,6 +243,49 @@
 .sizeChip:hover {
   border-color: var(--border-bright);
   color: var(--cyan);
+}
+
+.sizeChipActive {
+  border-color: var(--border-bright);
+  color: var(--cyan);
+  background: var(--cyan-glow-sm);
+}
+
+.itemQuantity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qtyBtn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.qtyBtn:hover:not(:disabled) {
+  border-color: var(--border-bright);
+  color: var(--cyan);
+}
+
+.qtyBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.qtyValue {
+  min-width: 20px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
 }
 
 .productBottom {

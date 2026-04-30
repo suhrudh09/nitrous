@@ -1,6 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
+import { getCart, getLiveEvents, getNotifications, markNotificationRead } from '@/lib/api'
+import type { Notification } from '@/types'
 import styles from './Nav.module.css'
 
 interface User {
@@ -23,14 +25,22 @@ interface CartItem {
 }
 
 const CART_STORAGE_KEY = 'nitrous_cart_v1'
+const CART_UPDATED_EVENT = 'nitrous-cart-updated'
 
 export default function Nav() {
   const [user, setUser] = useState<User | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [cart, setCart] = useState<CartItem[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [liveEventCount, setLiveEventCount] = useState(0)
+  const [showNewNotificationPopup, setShowNewNotificationPopup] = useState(false)
   const dropRef = useRef<HTMLDivElement>(null)
   const cartRef = useRef<HTMLDivElement>(null)
+  const notificationsRef = useRef<HTMLDivElement>(null)
+  const prevUnreadRef = useRef(0)
 
   // Read auth from localStorage on mount
   useEffect(() => {
@@ -50,18 +60,94 @@ export default function Nav() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof setInterval> | undefined
+
+    const fetchLiveEvents = async () => {
+      try {
+        const liveEvents = await getLiveEvents()
+        if (cancelled) return
+        setLiveEventCount(liveEvents.length)
+      } catch {
+        // keep the previous live count on transient failures
+      }
+    }
+
+    fetchLiveEvents()
+    timer = setInterval(fetchLiveEvents, 30000)
+
+    return () => {
+      cancelled = true
+      if (timer) clearInterval(timer)
+    }
+  }, [])
+
   // Load cart from localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CART_STORAGE_KEY)
-      if (raw) {
+    let cancelled = false
+
+    const loadLocalCart = () => {
+      try {
+        const raw = localStorage.getItem(CART_STORAGE_KEY)
+        if (!raw) {
+          setCart([])
+          return
+        }
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed)) {
           setCart(parsed)
         }
+      } catch {
+        setCart([])
       }
-    } catch {
-      // ignore
+    }
+
+    const loadCart = async () => {
+      loadLocalCart()
+
+      const token = localStorage.getItem('nitrous_token')
+      if (!token) return
+
+      try {
+        const remote = await getCart(token)
+        if (cancelled) return
+
+        const normalized = remote.map((entry) => ({
+          item: {
+            id: entry.merchId,
+            name: entry.name,
+            icon: entry.icon,
+            price: entry.price,
+            category: entry.category,
+          },
+          quantity: entry.quantity,
+          size: entry.size || undefined,
+        }))
+        setCart(normalized)
+      } catch {
+        // Keep local cart when backend sync fails
+      }
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CART_STORAGE_KEY) {
+        loadLocalCart()
+      }
+    }
+
+    const onCartUpdated = () => {
+      loadLocalCart()
+    }
+
+    loadCart()
+    window.addEventListener('storage', onStorage)
+    window.addEventListener(CART_UPDATED_EVENT, onCartUpdated)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(CART_UPDATED_EVENT, onCartUpdated)
     }
   }, [])
 
@@ -74,14 +160,73 @@ export default function Nav() {
       if (cartRef.current && !cartRef.current.contains(e.target as Node)) {
         setCartOpen(false)
       }
+      if (notificationsRef.current && !notificationsRef.current.contains(e.target as Node)) {
+        setNotificationsOpen(false)
+      }
     }
-    if (dropdownOpen || cartOpen) document.addEventListener('mousedown', handleClick)
+    if (dropdownOpen || cartOpen || notificationsOpen) document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
-  }, [dropdownOpen, cartOpen])
+  }, [dropdownOpen, cartOpen, notificationsOpen])
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof setInterval> | undefined
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) return
+
+    const fetchNotifications = async () => {
+      try {
+        const data = await getNotifications(token)
+        if (cancelled) return
+
+        setNotifications(data.notifications)
+        setUnreadCount(data.unread)
+
+        if (data.unread > prevUnreadRef.current) {
+          setShowNewNotificationPopup(true)
+          window.setTimeout(() => setShowNewNotificationPopup(false), 4000)
+        }
+        prevUnreadRef.current = data.unread
+      } catch {
+        // ignore notification polling failures
+      }
+    }
+
+    fetchNotifications()
+    timer = setInterval(fetchNotifications, 15000)
+
+    return () => {
+      cancelled = true
+      if (timer) clearInterval(timer)
+    }
+  }, [])
+
+  const onMarkNotificationRead = async (notificationId: string) => {
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) return
+
+    try {
+      await markNotificationRead(notificationId, token)
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === notificationId
+            ? { ...notification, readAt: new Date().toISOString() }
+            : notification
+        )
+      )
+      setUnreadCount((prev) => Math.max(0, prev - 1))
+      prevUnreadRef.current = Math.max(0, prevUnreadRef.current - 1)
+    } catch {
+      // ignore mark read errors
+    }
+  }
 
   function handleSignOut() {
     localStorage.removeItem('nitrous_token')
     localStorage.removeItem('nitrous_user')
+    localStorage.removeItem(CART_STORAGE_KEY)
+    window.dispatchEvent(new Event(CART_UPDATED_EVENT))
+    setCart([])
     setUser(null)
     setDropdownOpen(false)
     globalThis.location.href = '/'
@@ -92,11 +237,17 @@ export default function Nav() {
 
   return (
     <nav className={styles.nav}>
+      {showNewNotificationPopup ? (
+        <div className={styles.notificationPopup}>New notification</div>
+      ) : null}
+
       <Link href="/" className={styles.logo}>
         NITROUS<span>.</span>
       </Link>
 
       <div className={styles.navCenter}>
+        <Link href="/garage" className={styles.navLink}>Garage</Link>
+        <Link href="/passes" className={styles.navLink}>Access Passes</Link>
         <Link href="/live" className={styles.navLink}>Live</Link>
         <Link href="/events" className={styles.navLink}>Events</Link>
         <Link href="/teams" className={styles.navLink}>Teams</Link>
@@ -107,7 +258,53 @@ export default function Nav() {
       <div className={styles.navRight}>
         <div className={styles.navStatus}>
           <div className={styles.dotLive} />
-          <span>4 Events Live</span>
+          <span>{liveEventCount} {liveEventCount === 1 ? 'Event' : 'Events'} Live</span>
+        </div>
+
+        <div className={styles.notificationZone} ref={notificationsRef}>
+          <button
+            className={`${styles.notificationBtn} ${notificationsOpen ? styles.notificationBtnOpen : ''}`}
+            onClick={() => setNotificationsOpen((v) => !v)}
+            aria-label="Notifications"
+          >
+            🔔
+            {unreadCount > 0 ? <span className={styles.notificationBadge}>{unreadCount}</span> : null}
+          </button>
+
+          {notificationsOpen ? (
+            <div className={styles.notificationDropdown}>
+              <div className={`${styles.dropCorner} ${styles.dropCornerTL}`} />
+              <div className={`${styles.dropCorner} ${styles.dropCornerTR}`} />
+              <div className={styles.notificationHeader}>
+                <span>Notifications</span>
+                <span>{unreadCount} new</span>
+              </div>
+              <div className={styles.cartDivider} />
+
+              <div className={styles.notificationList}>
+                {notifications.length === 0 ? (
+                  <div className={styles.notificationEmpty}>No notifications</div>
+                ) : (
+                  notifications.map((notification) => (
+                    <div key={notification.id} className={styles.notificationItem}>
+                      <div className={styles.notificationTitle}>{notification.title}</div>
+                      <div className={styles.notificationBody}>{notification.body}</div>
+                      {notification.readAt ? (
+                        <div className={styles.notificationRead}>Read</div>
+                      ) : (
+                        <button
+                          className={styles.notificationMarkRead}
+                          onClick={() => onMarkNotificationRead(notification.id)}
+                        >
+                          Mark read
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Cart Icon */}
@@ -232,6 +429,11 @@ export default function Nav() {
                 <Link href="/orders" className={styles.dropItem} onClick={() => setDropdownOpen(false)}>
                   <span className={styles.dropItemIcon}>📦</span>
                   <span>My Orders</span>
+                  <span className={styles.dropItemArrow}>→</span>
+                </Link>
+                <Link href="/reminders" className={styles.dropItem} onClick={() => setDropdownOpen(false)}>
+                  <span className={styles.dropItemIcon}>⏰</span>
+                  <span>My Reminders</span>
                   <span className={styles.dropItemArrow}>→</span>
                 </Link>
                 <Link href="/journeys" className={styles.dropItem} onClick={() => setDropdownOpen(false)}>

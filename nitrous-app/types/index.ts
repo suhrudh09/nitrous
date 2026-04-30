@@ -153,7 +153,8 @@ export interface User {
   id: string
   email: string
   name: string
-  role: 'viewer' | 'participant' | 'manager' | 'sponsor'
+  role: 'viewer' | 'participant' | 'manager' | 'sponsor' | 'admin'
+  plan: 'FREE' | 'VIP' | 'PLATINUM'
   createdAt: string
 }
 
@@ -177,6 +178,65 @@ export interface Order {
   userId: string
   items: OrderItem[]
   total: number
-  status: 'pending' | 'confirmed' | 'shipped'
+  status: 'pending' | 'confirmed' | 'shipped' | 'failed' | 'cancelled'
+  createdAt: string
+}
+
+export interface CartItem {
+  merchId: string
+  name: string
+  icon: string
+  price: number
+  category: 'apparel' | 'accessories' | 'collectibles' | string
+  quantity: number
+  size?: string
+}
+
+export interface PaymentIntentResponse {
+  clientSecret: string
+  paymentId: string
+  amount: number
+  currency: string
+}
+
+// ── JourneyBooking ────────────────────────────────────────────────────────────
+
+export interface JourneyBooking {
+  id: string
+  title: string
+  category: string
+  description: string
+  badge: string
+  slotsLeft: number
+  date: string
+  price: number
+  thumbnailUrl?: string
+  bookingId: string
+  quantity: number
+  bookedAt: string
+}
+
+export interface PaymentState {
+  status: 'idle' | 'processing' | 'success' | 'failed'
+  paymentId?: string
+  error?: string
+}
+
+export interface Reminder {
+  id: string
+  userId: string
+  eventId: string
+  message?: string
+  remindAt: string
+  createdAt: string
+}
+
+export interface Notification {
+  id: string
+  userId: string
+  title: string
+  body: string
+  type: string
+  readAt?: string
   createdAt: string
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Nav from '@/components/Nav'
 import { useCanTune, useUser } from '@/hooks/usePermission'
 import styles from './garage.module.css'
@@ -244,6 +245,7 @@ function StatBar({ label, value, max, accent }: { label: string; value: number; 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function GaragePage() {
+  const router = useRouter()
   const [makes, setMakes] = useState<GarageMake[]>([])
   const [models, setModels] = useState<GarageModel[]>([])
   const [selectedMake, setSelectedMake] = useState('')
@@ -263,6 +265,7 @@ export default function GaragePage() {
   const [loadingSpec, setLoadingSpec] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<string>('')
   const [tuneError, setTuneError] = useState<string | null>(null)
+  const [showPremiumPopup, setShowPremiumPopup] = useState(false)
 
   // Permission hooks
   const canTune = useCanTune()
@@ -521,57 +524,53 @@ export default function GaragePage() {
 
   const saveCurrentConfig = async () => {
     if (!selectedMake || !selectedModel || !selectedYear) return
-    if (user?.role === 'viewer') return
+    if (!user || user.role === 'viewer') {
+      setShowPremiumPopup(true)
+      return
+    }
     const engineValue = spec?.engine || 'N/A'
     const token = localStorage.getItem('nitrous_token')
 
-    if (token) {
-      try {
-        const res = await fetch(`${GARAGE_API_BASE}/garage/configs`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            name: `${selectedMake} ${selectedModel} ${selectedYear}`,
-            make: selectedMake,
-            model: selectedModel,
-            year: selectedYear,
-            engine: engineValue,
-            tuning,
-          }),
-        })
-        if (res.ok) {
-          const data = await res.json() as { config: { id: string; make: string; model: string; year: number; engine: string; tuning?: string } }
-          const saved = data.config
-          const savedTuning = TUNING_KEYS.includes((saved.tuning ?? tuning) as TuningKey)
-            ? ((saved.tuning ?? tuning) as TuningKey)
-            : 'stock'
-          setSavedConfigs(prev => {
-            const next = prev.filter(c => c.id !== saved.id)
-            return [{ id: saved.id, make: saved.make, model: saved.model, year: saved.year, engine: saved.engine, tuning: savedTuning }, ...next].slice(0, 10)
-          })
-          return
-        }
-      } catch {
-        return
-      }
-
-      // Authenticated requests should not fall back to local-only saves.
+    if (!token) {
       return
     }
 
-    // Fallback: local state only (unauthenticated)
-    const config: SavedVehicleConfig = {
-      id: `${selectedMake}|${selectedModel}|${selectedYear}|${engineValue}`,
-      make: selectedMake,
-      model: selectedModel,
-      year: selectedYear,
-      engine: engineValue,
-      tuning,
+    try {
+      const res = await fetch(`${GARAGE_API_BASE}/garage/configs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          name: `${selectedMake} ${selectedModel} ${selectedYear}`,
+          make: selectedMake,
+          model: selectedModel,
+          year: selectedYear,
+          engine: engineValue,
+          tuning,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json() as { config: { id: string; make: string; model: string; year: number; engine: string; tuning?: string } }
+        const saved = data.config
+        const savedTuning = TUNING_KEYS.includes((saved.tuning ?? tuning) as TuningKey)
+          ? ((saved.tuning ?? tuning) as TuningKey)
+          : 'stock'
+        setSavedConfigs(prev => {
+          const next = prev.filter(c => c.id !== saved.id)
+          return [{ id: saved.id, make: saved.make, model: saved.model, year: saved.year, engine: saved.engine, tuning: savedTuning }, ...next].slice(0, 10)
+        })
+      }
+    } catch {
+      return
     }
-    setSavedConfigs(prev => {
-      if (prev.some(saved => saved.id === config.id)) return prev
-      return [config, ...prev].slice(0, 10)
-    })
+  }
+
+  const handlePremiumUpgrade = () => {
+    setShowPremiumPopup(false)
+    if (user?.role === 'viewer') {
+      router.push('/settings')
+      return
+    }
+    router.push('/login?mode=signup')
   }
 
   const loadSavedConfig = (saved: SavedVehicleConfig) => {
@@ -602,6 +601,23 @@ export default function GaragePage() {
           <div className={styles.accessBanner}>
             <span className={styles.accessIcon}>🔒</span>
             <span>LIVE TUNING UNAVAILABLE — You need Manager or Admin role to run server tuning</span>
+          </div>
+        )}
+
+        {showPremiumPopup && (
+          <div className={styles.premiumOverlay} onClick={() => setShowPremiumPopup(false)}>
+            <div className={styles.premiumModal} onClick={e => e.stopPropagation()}>
+              <div className={styles.premiumTitle}>Premium Feature</div>
+              <p className={styles.premiumCopy}>You have discovered a premium feature. Upgrade Now</p>
+              <div className={styles.premiumActions}>
+                <button className={styles.premiumCloseBtn} onClick={() => setShowPremiumPopup(false)}>
+                  Close
+                </button>
+                <button className={styles.premiumUpgradeBtn} onClick={handlePremiumUpgrade}>
+                  Upgrade now
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -691,8 +707,8 @@ export default function GaragePage() {
               className={styles.tuningBtn}
               style={{ width: '100%', marginTop: 8, borderColor: accent, color: accent, background: `${accent}15` }}
               onClick={saveCurrentConfig}
-              disabled={!selectedMake || !selectedModel || !selectedYear || user?.role === 'viewer'}
-              title={user?.role === 'viewer' ? 'Viewers cannot save configurations' : undefined}
+              disabled={!selectedMake || !selectedModel || !selectedYear}
+              title={!user || user?.role === 'viewer' ? 'This is a premium feature' : undefined}
             >
               SAVE CONFIGURATION
             </button>

@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import Nav from '@/components/Nav'
-import { getEvents, setReminder } from '@/lib/api'
+import { getEvents, setReminder, getMyReminders, deleteReminder } from '@/lib/api'
+import type { Reminder } from '@/types'
 import styles from './events.module.css'
 
 // Configuration
@@ -48,18 +49,54 @@ export default function EventsPage() {
   const [filter, setFilter] = useState<Category>('all')
   const [liveOnly, setLiveOnly] = useState(false)
   const [remindingId, setRemindingId] = useState<string | null>(null)
+  const [remindersByEvent, setRemindersByEvent] = useState<Record<string, Reminder>>({})
+  const [modalEvent, setModalEvent] = useState<Event | null>(null)
+  const [modalMessage, setModalMessage] = useState('')
+  const [modalRemindDate, setModalRemindDate] = useState('')
+  const [modalRemindTime, setModalRemindTime] = useState('')
+  const [modalSaving, setModalSaving] = useState(false)
 
   // Fetch Data
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined
+    let cancelled = false
+
+    const syncReminders = async () => {
+      const token = localStorage.getItem('nitrous_token')
+      if (!token) return
+
+      try {
+        const reminders = await getMyReminders(token)
+        if (cancelled) return
+
+        const map: Record<string, Reminder> = {}
+        reminders.forEach((reminder) => {
+          map[reminder.eventId] = reminder
+        })
+        setRemindersByEvent(map)
+      } catch {
+        // ignore periodic reminder sync failures
+      }
+    }
+
     const fetchData = async () => {
       try {
         const events = await getEvents()
         setAllEvents(events)
+
+        await syncReminders()
+
+        timer = setInterval(syncReminders, 15000)
       } catch (error) {
         console.error('Failed to fetch events:', error)
       }
     }
     fetchData()
+
+    return () => {
+      cancelled = true
+      if (timer) clearInterval(timer)
+    }
   }, [])
 
   // Helpers
@@ -87,13 +124,13 @@ export default function EventsPage() {
 
     const adjusted = new Date(parsed.getTime() + offsetMinutes * 60_000)
     const timePart = new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true,
+      hour12: false,
       timeZone: 'UTC',
     }).format(adjusted)
 
-    if (!offsetMatch) return timePart
+    if (!offsetMatch) return `${timePart} UTC`
 
     const sign = offsetMatch[1]
     const hours = offsetMatch[2]
@@ -102,18 +139,161 @@ export default function EventsPage() {
     return `${timePart} (UTC${sign}${hours}${minutes === '00' ? '' : `:${minutes}`})`
   }
 
-  const handleSetReminder = async (eventId: string) => {
+  const toDateTimeUtcInput = (value: string): string => {
+    const d = new Date(value)
+    if (isNaN(d.getTime())) return ''
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+  }
+
+  const utcInputToIso = (value: string): string => {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/)
+    if (!match) return new Date(value).toISOString()
+
+    const [, y, m, d, hh, mm] = match
+    return new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm))).toISOString()
+  }
+
+  const splitUtcInput = (value: string): { date: string; time: string } => {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/)
+    if (!match) {
+      return { date: '', time: '' }
+    }
+
+    return { date: match[1], time: match[2] }
+  }
+
+  const getTodayUtcDate = (): string => {
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`
+  }
+
+  const getTodayLocalDate = (): string => {
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  }
+
+  const toUtcInputFromParts = (date: string, time: string): string => {
+    return `${date}T${time}`
+  }
+
+  const getEventStart = (event: Event): Date | null => {
+    if (event.time) {
+      const fromTime = new Date(event.time)
+      if (!isNaN(fromTime.getTime())) return fromTime
+    }
+
+    if (event.date.includes('T')) {
+      const fromDateTime = new Date(event.date)
+      if (!isNaN(fromDateTime.getTime())) return fromDateTime
+    }
+
+    return null
+  }
+
+  const getDefaultReminderDateTimeUtcInput = (event: Event): string => {
+    const now = Date.now()
+    const minAllowed = new Date(now + 5 * 60 * 1000)
+    const eventStart = getEventStart(event)
+
+    if (!eventStart) {
+      return toDateTimeUtcInput(new Date(now + 60 * 60 * 1000).toISOString())
+    }
+
+    const oneHourBefore = new Date(eventStart.getTime() - 60 * 60 * 1000)
+    return toDateTimeUtcInput((oneHourBefore.getTime() > minAllowed.getTime() ? oneHourBefore : minAllowed).toISOString())
+  }
+
+  const normalizeDatePickerValueToUtc = (value: string): string => {
+    const localToday = getTodayLocalDate()
+    const utcToday = getTodayUtcDate()
+
+    // Native picker "Today" follows local timezone. In UTC mode, remap to UTC today when they differ.
+    if (value === localToday && localToday !== utcToday) {
+      return utcToday
+    }
+
+    return value
+  }
+
+  const isPastEvent = (event: Event): boolean => {
+    const parsed = new Date(event.date)
+    if (isNaN(parsed.getTime())) return false
+    return parsed.getTime() <= Date.now()
+  }
+
+  const openReminderModal = (event: Event) => {
+    const existing = remindersByEvent[event.id]
+    const initialValue = existing ? toDateTimeUtcInput(existing.remindAt) : getDefaultReminderDateTimeUtcInput(event)
+    const split = splitUtcInput(initialValue)
+    setModalEvent(event)
+    setModalMessage(existing?.message || '')
+    setModalRemindDate(split.date)
+    setModalRemindTime(split.time)
+  }
+
+  const closeReminderModal = () => {
+    setModalEvent(null)
+    setModalMessage('')
+    setModalRemindDate('')
+    setModalRemindTime('')
+    setModalSaving(false)
+  }
+
+  const handleSaveReminder = async () => {
+    if (!modalEvent || !modalRemindDate || !modalRemindTime) return
     const token = localStorage.getItem('nitrous_token')
     if (!token) {
       window.location.href = '/login'
       return
     }
 
-    setRemindingId(eventId)
+    setModalSaving(true)
     try {
-      await setReminder(eventId, token)
+      const existing = remindersByEvent[modalEvent.id]
+      if (existing) {
+        await deleteReminder(existing.id, token)
+      }
+
+      const saved = await setReminder(
+        {
+          eventId: modalEvent.id,
+          message: modalMessage.trim(),
+          remindAt: utcInputToIso(toUtcInputFromParts(modalRemindDate, modalRemindTime)),
+        },
+        token
+      )
+
+      setRemindersByEvent((prev) => ({ ...prev, [modalEvent.id]: saved }))
+      closeReminderModal()
     } catch (error) {
       console.error('Failed to set reminder:', error)
+    } finally {
+      setModalSaving(false)
+    }
+  }
+
+  const handleDeleteReminder = async (eventId: string) => {
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) {
+      window.location.href = '/login'
+      return
+    }
+    const reminder = remindersByEvent[eventId]
+    if (!reminder) return
+
+    setRemindingId(eventId)
+    try {
+      await deleteReminder(reminder.id, token)
+      setRemindersByEvent((prev) => {
+        const next = { ...prev }
+        delete next[eventId]
+        return next
+      })
+    } catch (error) {
+      console.error('Failed to delete reminder:', error)
     } finally {
       setRemindingId(null)
     }
@@ -204,19 +384,77 @@ export default function EventsPage() {
                 {event.isLive ? (
                   <Link href="/live" className={styles.btnWatch}>▶ Watch Live</Link>
                 ) : (
+                  (() => {
+                    const pastEvent = isPastEvent(event)
+                    return (
                   <button 
                     className={styles.btnRemind}
-                    onClick={() => handleSetReminder(event.id)}
-                    disabled={remindingId === event.id}
+                    onClick={() => openReminderModal(event)}
+                    disabled={remindingId === event.id || pastEvent}
                   >
-                    {remindingId === event.id ? '⏳ Setting...' : 'Set Reminder'}
+                    {remindingId === event.id
+                      ? '⏳ Saving...'
+                      : pastEvent
+                        ? 'Event Ended'
+                        : remindersByEvent[event.id]
+                          ? 'Edit Reminder'
+                          : 'Set Reminder'}
                   </button>
+                    )
+                  })()
                 )}
-                <button className={styles.btnMore}>···</button>
+                {!event.isLive && remindersByEvent[event.id] ? (
+                  <button
+                    className={styles.btnDelete}
+                    onClick={() => handleDeleteReminder(event.id)}
+                    disabled={remindingId === event.id}
+                    aria-label="Delete reminder"
+                  >
+                    🗑️
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}
         </div>
+
+        {modalEvent ? (
+          <div className={styles.reminderModalOverlay} onClick={closeReminderModal}>
+            <div className={styles.reminderModal} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.reminderModalTitle}>Reminder for {modalEvent.title}</div>
+              <label className={styles.reminderFieldLabel}>Reminder Date (UTC)</label>
+              <input
+                className={styles.reminderInput}
+                type="date"
+                value={modalRemindDate}
+                onChange={(e) => setModalRemindDate(normalizeDatePickerValueToUtc(e.target.value))}
+              />
+
+              <label className={styles.reminderFieldLabel}>Reminder Time (UTC)</label>
+              <input
+                className={styles.reminderInput}
+                type="time"
+                value={modalRemindTime}
+                onChange={(e) => setModalRemindTime(e.target.value)}
+              />
+
+              <label className={styles.reminderFieldLabel}>Message (optional)</label>
+              <textarea
+                className={styles.reminderTextarea}
+                value={modalMessage}
+                onChange={(e) => setModalMessage(e.target.value)}
+                placeholder="Ex: Leave for track at 6:30 PM"
+              />
+
+              <div className={styles.reminderActions}>
+                <button className={styles.btnCancel} onClick={closeReminderModal} disabled={modalSaving}>Cancel</button>
+                <button className={styles.btnSave} onClick={handleSaveReminder} disabled={modalSaving || !modalRemindDate || !modalRemindTime}>
+                  {modalSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
     </>
   )

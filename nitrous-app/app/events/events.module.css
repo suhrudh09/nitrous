@@ -294,7 +294,7 @@
   box-shadow: 0 0 10px var(--cyan-glow);
 }
 
-.btnMore {
+.btnDelete {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--muted);
@@ -305,9 +305,88 @@
   transition: all 0.2s;
 }
 
-.btnMore:hover {
+.btnDelete:hover {
   border-color: var(--border-bright);
   color: var(--text);
+}
+
+.reminderModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+
+.reminderModal {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.reminderModalTitle {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text-bright);
+  margin-bottom: 14px;
+}
+
+.reminderFieldLabel {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 1.5px;
+  margin: 10px 0 6px;
+}
+
+.reminderInput,
+.reminderTextarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.reminderTextarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.reminderActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.btnCancel,
+.btnSave {
+  border-radius: 4px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btnSave {
+  border-color: var(--border-bright);
+  color: var(--cyan);
+}
+
+.btnSave:hover {
+  background: var(--cyan-glow-sm);
 }
 
 @media (max-width: 768px) {

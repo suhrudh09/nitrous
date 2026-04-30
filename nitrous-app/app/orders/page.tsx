@@ -1,18 +1,23 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { getMyOrders, getMyPasses, type UserPass } from '@/lib/api'
-import type { Order } from '@/types'
+import { getMyOrders, getMyPasses, getMerchItems, saveCart, getMyJourneyBookings, type UserPass } from '@/lib/api'
+import type { Order, MerchItem, CartItem, JourneyBooking } from '@/types'
 import styles from './orders.module.css'
 
-type Tab = 'passes' | 'merch'
+type Tab = 'passes' | 'merch' | 'journeys'
+const CART_STORAGE_KEY = 'nitrous_cart_v1'
+const CART_UPDATED_EVENT = 'nitrous-cart-updated'
 
 export default function OrdersPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('passes')
   const [passes, setPasses] = useState<UserPass[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [journeyBookings, setJourneyBookings] = useState<JourneyBooking[]>([])
+  const [merchItems, setMerchItems] = useState<MerchItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -26,14 +31,65 @@ export default function OrdersPage() {
     Promise.all([
       getMyPasses(token).catch(() => []),
       getMyOrders(token).catch(() => []),
+      getMyJourneyBookings(token).catch(() => []),
     ])
-      .then(([passData, orderData]) => {
+      .then(([passData, orderData, journeyData]) => {
         setPasses(passData)
         setOrders(orderData)
+        setJourneyBookings(journeyData)
       })
       .catch(() => setError('Failed to load orders'))
       .finally(() => setLoading(false))
+
+    getMerchItems()
+      .then(setMerchItems)
+      .catch(() => {
+        // Ignore merch metadata fetch failure and fallback to minimal cart items.
+      })
   }, [router])
+
+  const handleRepeatOrder = async (order: Order) => {
+    const token = localStorage.getItem('nitrous_token')
+    if (!token) {
+      router.push('/login')
+      return
+    }
+
+    const merchByID = new Map(merchItems.map((item) => [item.id, item]))
+    const nextCart: CartItem[] = order.items
+      .filter((item) => item.quantity > 0)
+      .map((item) => {
+        const merch = merchByID.get(item.merchId)
+        return {
+          merchId: item.merchId,
+          name: item.name || merch?.name || item.merchId,
+          icon: merch?.icon || '🛍️',
+          price: item.price > 0 ? item.price : merch?.price || 0,
+          category: merch?.category || 'collectibles',
+          quantity: item.quantity,
+          size: item.size,
+        }
+      })
+      .filter((item) => item.price > 0)
+
+    await saveCart(nextCart, token)
+
+    const localCart = nextCart.map((item) => ({
+      item: {
+        id: item.merchId,
+        name: item.name,
+        icon: item.icon,
+        price: item.price,
+        category: item.category,
+      },
+      quantity: item.quantity,
+      size: item.size,
+    }))
+
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(localCart))
+    window.dispatchEvent(new Event(CART_UPDATED_EVENT))
+    router.push('/cart')
+  }
 
   const formatDate = (dateStr: string) => {
     try {
@@ -63,6 +119,8 @@ export default function OrdersPage() {
         return 'var(--cyan)'
       case 'cancelled':
         return 'var(--red)'
+      case 'failed':
+        return 'var(--red)'
       default:
         return 'var(--grey)'
     }
@@ -87,7 +145,7 @@ export default function OrdersPage() {
         <header className={styles.header}>
           <h1 className={styles.title}>My Orders</h1>
           <p className={styles.subtitle}>
-            View your event passes and merchandise orders
+            View your event passes, merchandise orders, and journey bookings
           </p>
         </header>
 
@@ -99,6 +157,15 @@ export default function OrdersPage() {
             Event Passes
             {passes.length > 0 && (
               <span className={styles.badge}>{passes.length}</span>
+            )}
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'journeys' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('journeys')}
+          >
+            Journeys
+            {journeyBookings.length > 0 && (
+              <span className={styles.badge}>{journeyBookings.length}</span>
             )}
           </button>
           <button
@@ -189,6 +256,53 @@ export default function OrdersPage() {
               </div>
             )}
           </div>
+        ) : activeTab === 'journeys' ? (
+          <div className={styles.content}>
+            {journeyBookings.length === 0 ? (
+              <div className={styles.empty}>
+                <div className={styles.emptyIcon}>🗺️</div>
+                <h3>No journey bookings yet</h3>
+                <p>Explore exclusive journeys and book your spot</p>
+                <button className={styles.ctaButton} onClick={() => router.push('/journeys')}>
+                  Browse Journeys
+                </button>
+              </div>
+            ) : (
+              <div className={styles.grid}>
+                {journeyBookings.map((booking) => (
+                  <div key={booking.bookingId} className={styles.journeyBookingCard}>
+                    <div className={styles.journeyBookingHead}>
+                      <span className={styles.journeyBookingCat}>{booking.category}</span>
+                      {booking.badge && <span className={styles.cardBadge}>{booking.badge}</span>}
+                    </div>
+                    <h3 className={styles.eventName}>{booking.title}</h3>
+                    <div className={styles.cardDetails}>
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>📅</span>
+                        <span>{formatDate(booking.date)}</span>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>👥</span>
+                        <span>{booking.quantity} {booking.quantity === 1 ? 'person' : 'people'}</span>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>🗓️</span>
+                        <span>Booked {formatDate(booking.bookedAt)}</span>
+                      </div>
+                    </div>
+                    <div className={styles.cardFooter}>
+                      <span className={styles.price}>
+                        {formatPrice(booking.price * booking.quantity)}
+                      </span>
+                      <span className={styles.purchaseDate}>
+                        ${booking.price.toLocaleString()} × {booking.quantity}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <div className={styles.content}>
             {orders.length === 0 ? (
@@ -209,9 +323,9 @@ export default function OrdersPage() {
                   <div key={order.id} className={styles.orderCard}>
                     <div className={styles.orderHeader}>
                       <div>
-                        <span className={styles.orderId}>
+                        <Link href={`/orders/${order.id}`} className={styles.orderId}>
                           Order #{order.id.slice(0, 8).toUpperCase()}
-                        </span>
+                        </Link>
                         <span className={styles.orderDate}>
                           {formatDate(order.createdAt)}
                         </span>
@@ -241,9 +355,18 @@ export default function OrdersPage() {
                     </div>
                     <div className={styles.orderFooter}>
                       <span className={styles.totalLabel}>Total</span>
-                      <span className={styles.totalPrice}>
-                        {formatPrice(order.total)}
-                      </span>
+                      <div>
+                        <span className={styles.totalPrice}>
+                          {formatPrice(order.total)}
+                        </span>
+                        <button
+                          className={styles.ctaButton}
+                          style={{ marginLeft: '12px' }}
+                          onClick={() => handleRepeatOrder(order)}
+                        >
+                          Repeat
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
