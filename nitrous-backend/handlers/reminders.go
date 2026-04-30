@@ -40,19 +40,23 @@ func SetReminder(c *gin.Context) {
 	}
 
 	if database.DB != nil {
-		// Check if event exists
-		var exists bool
-		err := database.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM events WHERE id=$1)`, req.EventID).Scan(&exists)
+		// Check if event exists and ensure it has not already started.
+		var eventDate time.Time
+		err := database.DB.QueryRow(`SELECT date FROM events WHERE id=$1`, req.EventID).Scan(&eventDate)
 		if err != nil {
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		if !exists {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		if !eventDate.After(time.Now()) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot set reminders for past events"})
 			return
 		}
 
-		_, err = database.DB.Exec(`INSERT INTO reminders (id, user_id, event_id, message, remind_at, created_at) VALUES ($1,$2,$3,$4,$5,$6)`, reminder.ID, reminder.UserID, reminder.EventID, reminder.Message, reminder.RemindAt, reminder.CreatedAt)
+		_, err = database.DB.Exec(`INSERT INTO reminders (id, user_id, event_id, message, remind_at, notified_at, created_at) VALUES ($1,$2,$3,$4,$5,NULL,$6)`, reminder.ID, reminder.UserID, reminder.EventID, reminder.Message, reminder.RemindAt, reminder.CreatedAt)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -63,9 +67,13 @@ func SetReminder(c *gin.Context) {
 
 	database.Mu.RLock()
 	eventExists := false
+	eventInPast := false
 	for _, event := range database.Events {
 		if event.ID == req.EventID {
 			eventExists = true
+			if !event.Date.After(time.Now()) {
+				eventInPast = true
+			}
 			break
 		}
 	}
@@ -73,6 +81,10 @@ func SetReminder(c *gin.Context) {
 
 	if !eventExists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
+	}
+	if eventInPast {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot set reminders for past events"})
 		return
 	}
 

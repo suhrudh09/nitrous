@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"nitrous-backend/database"
 	"nitrous-backend/utils"
@@ -30,6 +31,64 @@ type UserPassPurchase struct {
 	Pass       Pass   `json:"pass"`
 	PurchaseID string `json:"purchaseId"`
 	CreatedAt  string `json:"createdAt"`
+	Quantity   int    `json:"quantity"`
+}
+
+// GetMyPasses returns all passes purchased by the authenticated user
+// GetAllPasses returns all available passes (public)
+func GetAllPasses(c *gin.Context) {
+	if database.DB != nil {
+		rows, err := database.DB.Query(`
+			SELECT id, tier, event_name, location, event_date, category, price::float8,
+			       perks, spots_left, total_spots, badge, tier_color
+			FROM passes ORDER BY event_date
+		`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		passes := make([]Pass, 0)
+		for rows.Next() {
+			var p Pass
+			var perksJSON []byte
+			var badge sql.NullString
+			var eventDate time.Time
+			if err := rows.Scan(&p.ID, &p.Tier, &p.Event, &p.Location, &eventDate, &p.Category, &p.Price, &perksJSON, &p.SpotsLeft, &p.TotalSpots, &badge, &p.TierColor); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			p.Date = eventDate.UTC().Format(time.RFC3339)
+			if len(perksJSON) > 0 {
+				_ = json.Unmarshal(perksJSON, &p.Perks)
+			}
+			if badge.Valid {
+				p.Badge = &badge.String
+			}
+			passes = append(passes, p)
+		}
+		c.JSON(http.StatusOK, gin.H{"passes": passes, "count": len(passes)})
+		return
+	}
+
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
+	result := make([]Pass, 0, len(database.Passes))
+	for _, p := range database.Passes {
+		badge := (*string)(nil)
+		if p.Badge != nil {
+			v := *p.Badge
+			badge = &v
+		}
+		result = append(result, Pass{
+			ID: p.ID, Tier: p.Tier, Event: p.Event, Location: p.Location,
+			Date: p.Date, Category: p.Category, Price: p.Price, Perks: p.Perks,
+			SpotsLeft: p.SpotsLeft, TotalSpots: p.TotalSpots, Badge: badge, TierColor: p.TierColor,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"passes": result, "count": len(result)})
 }
 
 // GetMyPasses returns all passes purchased by the authenticated user
@@ -44,7 +103,7 @@ func GetMyPasses(c *gin.Context) {
 		rows, err := database.DB.Query(`
 			SELECT p.id, p.tier, p.event, p.location, p.date, p.category, p.price, 
 			       p.spots_left, p.total_spots, p.badge, p.tier_color,
-			       pp.id as purchase_id, pp.created_at
+			       pp.id as purchase_id, pp.created_at, COALESCE(pp.quantity, 1)
 			FROM pass_purchases pp
 			JOIN passes p ON pp.pass_id = p.id
 			WHERE pp.user_id = $1
@@ -62,11 +121,12 @@ func GetMyPasses(c *gin.Context) {
 			var purchaseID string
 			var createdAt time.Time
 			var badge sql.NullString
+			var qty int
 
 			if err := rows.Scan(
 				&p.ID, &p.Tier, &p.Event, &p.Location, &p.Date, &p.Category, &p.Price,
 				&p.SpotsLeft, &p.TotalSpots, &badge, &p.TierColor,
-				&purchaseID, &createdAt,
+				&purchaseID, &createdAt, &qty,
 			); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -80,6 +140,7 @@ func GetMyPasses(c *gin.Context) {
 				Pass:       p,
 				PurchaseID: purchaseID,
 				CreatedAt:  createdAt.Format(time.RFC3339),
+				Quantity:   qty,
 			})
 		}
 
@@ -133,8 +194,18 @@ func PurchasePass(c *gin.Context) {
 
 	_ = utils.Claims{}
 
+	var body struct {
+		Quantity int `json:"quantity"`
+	}
+	body.Quantity = 1
+	if c.Request.ContentLength > 0 {
+		_ = c.ShouldBindJSON(&body)
+	}
+	if body.Quantity < 1 {
+		body.Quantity = 1
+	}
+
 	if database.DB != nil {
-		// Check if pass exists and has spots
 		var spotsLeft int
 		row := database.DB.QueryRow(`SELECT spots_left FROM passes WHERE id=$1`, passID)
 		if err := row.Scan(&spotsLeft); err != nil {
@@ -146,13 +217,11 @@ func PurchasePass(c *gin.Context) {
 			return
 		}
 
-		if spotsLeft <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "No spots remaining"})
+		if spotsLeft < body.Quantity {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough spots remaining"})
 			return
 		}
 
-		// Try to decrement spots and insert purchase in one atomic operation
-		// The unique constraint on (user_id, pass_id) will prevent duplicate purchases
 		tx, err := database.DB.Begin()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -160,32 +229,24 @@ func PurchasePass(c *gin.Context) {
 		}
 		defer tx.Rollback()
 
-		// Check if user already has this pass
-		var purchaseExists bool
-		err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM pass_purchases WHERE user_id=$1 AND pass_id=$2)`, userID.(string), passID).Scan(&purchaseExists)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		if purchaseExists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "You already have this pass"})
-			return
-		}
-
-		// Decrement spots
-		res, err := tx.Exec(`UPDATE passes SET spots_left = spots_left - 1 WHERE id=$1 AND spots_left > 0`, passID)
+		// Decrement spots by quantity
+		res, err := tx.Exec(`UPDATE passes SET spots_left = spots_left - $1 WHERE id=$2 AND spots_left >= $1`, body.Quantity, passID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 		affected, _ := res.RowsAffected()
 		if affected == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "No spots remaining"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough spots remaining"})
 			return
 		}
 
-		// Insert purchase record
-		_, err = tx.Exec(`INSERT INTO pass_purchases (user_id, pass_id, created_at) VALUES ($1,$2,$3)`, userID.(string), passID, time.Now())
+		// Upsert purchase record — update quantity if already exists
+		_, err = tx.Exec(`
+			INSERT INTO pass_purchases (user_id, pass_id, quantity, created_at)
+			VALUES ($1,$2,$3,$4)
+			ON CONFLICT (user_id, pass_id) DO UPDATE SET quantity = pass_purchases.quantity + EXCLUDED.quantity
+		`, userID.(string), passID, body.Quantity, time.Now())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -196,7 +257,7 @@ func PurchasePass(c *gin.Context) {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Pass purchased successfully", "passId": passID})
+		c.JSON(http.StatusOK, gin.H{"message": "Pass purchased successfully", "passId": passID, "quantity": body.Quantity})
 		return
 	}
 
@@ -215,24 +276,17 @@ func PurchasePass(c *gin.Context) {
 		return
 	}
 
-	if foundPass.SpotsLeft <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No spots remaining"})
+	if foundPass.SpotsLeft < body.Quantity {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough spots remaining"})
 		return
 	}
 
-	for _, purchase := range database.PassPurchases {
-		if purchase.UserID == userID.(string) && purchase.PassID == passID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "You already have this pass"})
-			return
-		}
-	}
-
-	foundPass.SpotsLeft--
+	foundPass.SpotsLeft -= body.Quantity
 	database.PassPurchases = append(database.PassPurchases, database.PassPurchase{
 		UserID:    userID.(string),
 		PassID:    passID,
 		CreatedAt: time.Now(),
 	})
 
-	c.JSON(http.StatusOK, gin.H{"message": "Pass purchased successfully", "passId": passID})
+	c.JSON(http.StatusOK, gin.H{"message": "Pass purchased successfully", "passId": passID, "quantity": body.Quantity})
 }

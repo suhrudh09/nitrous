@@ -73,6 +73,17 @@ type Reminder struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Notification represents a user-facing in-app notification.
+type Notification struct {
+	ID        string     `json:"id"`
+	UserID    string     `json:"userId"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	Type      string     `json:"type"`
+	ReadAt    *time.Time `json:"readAt,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+}
+
 // Order represents a merch order placed by a user.
 type Order struct {
 	ID           string    `json:"id"`
@@ -92,6 +103,7 @@ type User struct {
 	PasswordHash string    `json:"-"` // Never send password hash to frontend
 	Role         string    `json:"role"`
 	Name         string    `json:"name"`
+	Plan         string    `json:"plan"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
@@ -159,4 +171,20 @@ type CreateOrderRequest struct {
 	MerchItemIDs []string  `json:"merchItemIds" binding:"required,min=1,dive,required"`
 	Quantities   []int     `json:"quantities" binding:"required,min=1,dive,min=1"`
 	UnitPrices   []float64 `json:"unitPrices" binding:"required,min=1,dive,gt=0"`
+}
+
+// CartItem represents one item in a user's cart.
+type CartItem struct {
+	MerchID  string  `json:"merchId"`
+	Name     string  `json:"name"`
+	Icon     string  `json:"icon"`
+	Price    float64 `json:"price"`
+	Category string  `json:"category"`
+	Quantity int     `json:"quantity"`
+	Size     string  `json:"size,omitempty"`
+}
+
+// UpsertCartRequest replaces the authenticated user's cart contents.
+type UpsertCartRequest struct {
+	Items []CartItem `json:"items"`
 }

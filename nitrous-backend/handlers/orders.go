@@ -11,6 +11,35 @@ import (
 	"github.com/google/uuid"
 )
 
+const pendingOrderExpiry = time.Minute
+
+func expirePendingOrdersForUser(userID string) error {
+	if database.DB != nil {
+		_, err := database.DB.Exec(
+			`UPDATE orders
+			 SET status='failed'
+			 WHERE user_id=$1
+			   AND status='pending'
+			   AND created_at < $2`,
+			userID,
+			time.Now().Add(-pendingOrderExpiry),
+		)
+		return err
+	}
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+	for i := range database.Orders {
+		if database.Orders[i].UserID == userID && database.Orders[i].Status == "pending" {
+			if time.Since(database.Orders[i].CreatedAt) > pendingOrderExpiry {
+				database.Orders[i].Status = "failed"
+			}
+		}
+	}
+
+	return nil
+}
+
 // CreateOrder creates a merch order for the authenticated user.
 func CreateOrder(c *gin.Context) {
 	userID, exists := c.Get("userID")
@@ -109,6 +138,11 @@ func GetMyOrders(c *gin.Context) {
 		return
 	}
 
+	if err := expirePendingOrdersForUser(userID.(string)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	if database.DB != nil {
 		rows, err := database.DB.Query(`SELECT id, user_id::text, total::float8, status, created_at FROM orders WHERE user_id=$1 ORDER BY created_at DESC`, userID.(string))
 		if err != nil {
@@ -166,6 +200,11 @@ func GetOrderByID(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	if err := expirePendingOrdersForUser(userID.(string)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -230,6 +269,11 @@ func CancelOrder(c *gin.Context) {
 		return
 	}
 
+	if err := expirePendingOrdersForUser(userID.(string)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	orderID := c.Param("id")
 
 	if database.DB != nil {
@@ -248,8 +292,8 @@ func CancelOrder(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 			return
 		}
-		if status == "cancelled" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Order already cancelled"})
+		if status != "pending" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Only pending orders can be cancelled"})
 			return
 		}
 
@@ -293,8 +337,8 @@ func CancelOrder(c *gin.Context) {
 				return
 			}
 
-			if order.Status == "cancelled" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Order already cancelled"})
+			if order.Status != "pending" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Only pending orders can be cancelled"})
 				return
 			}
 

@@ -2,13 +2,13 @@
 -- These rows mirror the prototype content currently shown in the app.
 -- The file is idempotent so it can be executed safely during initialization.
 
-INSERT INTO users (id, email, password_hash, role, name)
+INSERT INTO users (id, email, password_hash, role, name, plan)
 VALUES
-    ('10000000-0000-0000-0000-000000000001', 'viewer@example.com', crypt('password123', gen_salt('bf')), 'viewer', 'Viewer User'),
-    ('10000000-0000-0000-0000-000000000002', 'participant@example.com', crypt('password123', gen_salt('bf')), 'participant', 'Participant User'),
-    ('10000000-0000-0000-0000-000000000003', 'manager@example.com', crypt('password123', gen_salt('bf')), 'manager', 'Manager User'),
-    ('10000000-0000-0000-0000-000000000004', 'sponsor@example.com', crypt('password123', gen_salt('bf')), 'sponsor', 'Sponsor User'),
-    ('10000000-0000-0000-0000-000000000005', 'admin@example.com', crypt('password123', gen_salt('bf')), 'admin', 'Admin User')
+    ('10000000-0000-0000-0000-000000000001', 'viewer@example.com', crypt('password123', gen_salt('bf')), 'viewer', 'Viewer User', 'FREE'),
+    ('10000000-0000-0000-0000-000000000002', 'participant@example.com', crypt('password123', gen_salt('bf')), 'participant', 'Participant User', 'VIP'),
+    ('10000000-0000-0000-0000-000000000003', 'manager@example.com', crypt('password123', gen_salt('bf')), 'manager', 'Manager User', 'VIP'),
+    ('10000000-0000-0000-0000-000000000004', 'sponsor@example.com', crypt('password123', gen_salt('bf')), 'sponsor', 'Sponsor User', 'PLATINUM'),
+    ('10000000-0000-0000-0000-000000000005', 'admin@example.com', crypt('password123', gen_salt('bf')), 'admin', 'Admin User', 'PLATINUM')
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO teams (id, name, country, is_private, followers_count)
@@ -66,7 +66,10 @@ INSERT INTO journeys (id, title, category, description, badge, slots_left, date,
 VALUES
     ('66666666-6666-6666-6666-666666666661', 'DAYTONA PIT CREW EXPERIENCE', 'MOTORSPORT - BEHIND THE SCENES', 'Go behind the wall at Daytona 500. Watch pit stops up close, meet the crew chiefs, and ride the pace car on track.', 'EXCLUSIVE', 12, NOW() + INTERVAL '10 days', 2400, NULL),
     ('66666666-6666-6666-6666-666666666662', 'DAKAR DESERT CONVOY', 'RALLY - DESERT EXPEDITION', 'Ride a support vehicle through the Dakar stages. Sleep under the stars, eat with the team, and feel the dust.', 'MEMBERS ONLY', 6, NOW() + INTERVAL '345 days', 5800, NULL),
-    ('66666666-6666-6666-6666-666666666663', 'RED BULL TANDEM SKYDIVE', 'AIR - EXTREME SPORT', 'Jump with a Red Bull certified instructor at 15,000ft. Camera-equipped, full debrief, and a story you''ll never forget.', 'LIMITED', 3, NOW() + INTERVAL '20 days', 1200, NULL)
+    ('66666666-6666-6666-6666-666666666663', 'RED BULL TANDEM SKYDIVE', 'AIR - EXTREME SPORT', 'Jump with a Red Bull certified instructor at 15,000ft. Camera-equipped, full debrief, and a story you''ll never forget.', 'LIMITED', 3, NOW() + INTERVAL '20 days', 1200, NULL),
+    ('66666666-6666-6666-6666-666666666664', 'BAJA NIGHT NAVIGATION CAMP', 'OFF-ROAD - NAVIGATION', 'Learn desert navigation from pro co-drivers, then run a guided night stage with live comms and support crews.', 'EXCLUSIVE', 10, NOW() + INTERVAL '28 days', 1850, NULL),
+    ('66666666-6666-6666-6666-666666666665', 'LAKE COMO RACE CONTROL ACCESS', 'WATER - RACE OPERATIONS', 'Watch race strategy in real time from race control during the Speed Boat Cup finals with post-race technical debrief.', 'MEMBERS ONLY', 8, NOW() + INTERVAL '32 days', 1650, NULL),
+    ('66666666-6666-6666-6666-666666666666', 'INTERLAKEN WINGSUIT PREP DAY', 'AIR - TRAINING EXPERIENCE', 'Train with elite wingsuit staff, run simulation drills, and join weather briefings before jump day.', 'LIMITED', 5, NOW() + INTERVAL '41 days', 2100, NULL)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO merch_items (id, name, icon, price, category)
@@ -82,5 +85,8 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO passes (id, tier, event_name, location, event_date, category, price, perks, spots_left, total_spots, badge, tier_color)
 VALUES
     ('pass-daytona-grandstand', 'GRANDSTAND', 'Daytona 500', 'Daytona Beach, FL', NOW() + INTERVAL '30 days', 'motorsport', 299, '["Track access", "Pit lane tour"]'::jsonb, 4, 20, 'LIMITED', '#ff4d4d'),
-    ('pass-pit-experience', 'PIT ACCESS', 'F1 Grand Prix', 'Austin, TX', NOW() + INTERVAL '45 days', 'motorsport', 599, '["Pit walk", "Garage access"]'::jsonb, 12, 50, NULL, '#60a5fa')
+    ('pass-pit-experience', 'PIT ACCESS', 'F1 Grand Prix', 'Austin, TX', NOW() + INTERVAL '45 days', 'motorsport', 599, '["Pit walk", "Garage access"]'::jsonb, 12, 50, NULL, '#60a5fa'),
+    ('pass-dakar-service-park', 'VIP', 'Dakar Rally Stage Access', 'Al Ula, Saudi Arabia', NOW() + INTERVAL '55 days', 'off-road', 850, '["Service park access", "Team briefing", "Bivouac dinner"]'::jsonb, 18, 60, NULL, '#00e5ff'),
+    ('pass-como-premium-deck', 'GENERAL', 'Speed Boat Cup Finals', 'Lake Como, Italy', NOW() + INTERVAL '24 days', 'water', 240, '["Premium deck", "Race programme", "Dock walk"]'::jsonb, 70, 200, NULL, '#3b82f6'),
+    ('pass-interlaken-dropzone', 'PLATINUM', 'Red Bull Skydive Series', 'Interlaken, Switzerland', NOW() + INTERVAL '38 days', 'air', 680, '["Dropzone access", "Pilot Q&A", "Demo flight"]'::jsonb, 8, 30, 'HOT', '#facc15')
 ON CONFLICT (id) DO NOTHING;

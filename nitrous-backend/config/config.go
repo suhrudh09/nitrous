@@ -27,6 +27,7 @@ type Config struct {
 	ExternalRequestTimeout string
 	F1YouTubeLiveURL       string
 	F1TwitchLiveURL        string
+	ReminderPollInterval   string
 }
 
 var AppConfig Config
@@ -55,6 +56,7 @@ func LoadConfig() {
 		ExternalRequestTimeout: getEnv("EXTERNAL_REQUEST_TIMEOUT", "10s"),
 		F1YouTubeLiveURL:       getEnv("F1_YOUTUBE_LIVE_URL", "https://www.youtube.com/results?search_query=formula+1+live"),
 		F1TwitchLiveURL:        getEnv("F1_TWITCH_LIVE_URL", "https://www.twitch.tv/directory/category/sports"),
+		ReminderPollInterval:   getEnv("REMINDER_POLL_INTERVAL", "1m"),
 	}
 
 	log.Println("✓ Configuration loaded")

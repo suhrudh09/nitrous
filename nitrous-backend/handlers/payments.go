@@ -112,6 +112,17 @@ func ConfirmPayment(c *gin.Context) {
 	paymentID := c.Param("id")
 
 	if database.DB != nil {
+		var referenceType, referenceID string
+		row := database.DB.QueryRow(`SELECT reference_type, reference_id FROM payments WHERE id = $1 AND user_id = $2`, paymentID, userID)
+		if err := row.Scan(&referenceType, &referenceID); err != nil {
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to confirm payment"})
+			return
+		}
+
 		result, err := database.DB.Exec(
 			`UPDATE payments SET status = $1, updated_at = $2 WHERE id = $3 AND user_id = $4`,
 			"completed", time.Now(), paymentID, userID,
@@ -127,6 +138,10 @@ func ConfirmPayment(c *gin.Context) {
 			return
 		}
 
+		if referenceType == "order" && referenceID != "" {
+			_, _ = database.DB.Exec(`UPDATE orders SET status='confirmed' WHERE id=$1 AND user_id=$2`, referenceID, userID)
+		}
+
 		c.JSON(http.StatusOK, gin.H{"message": "Payment confirmed"})
 		return
 	}
@@ -136,10 +151,13 @@ func ConfirmPayment(c *gin.Context) {
 	defer database.Mu.Unlock()
 
 	found := false
+	var referenceType, referenceID string
 	for i := range database.Payments {
 		if database.Payments[i].ID == paymentID && database.Payments[i].UserID == userID {
 			database.Payments[i].Status = "completed"
 			database.Payments[i].UpdatedAt = time.Now()
+			referenceType = database.Payments[i].ReferenceType
+			referenceID = database.Payments[i].ReferenceID
 			found = true
 			break
 		}
@@ -148,6 +166,15 @@ func ConfirmPayment(c *gin.Context) {
 	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
 		return
+	}
+
+	if referenceType == "order" && referenceID != "" {
+		for i := range database.Orders {
+			if database.Orders[i].ID == referenceID && database.Orders[i].UserID == userID {
+				database.Orders[i].Status = "confirmed"
+				break
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Payment confirmed"})
